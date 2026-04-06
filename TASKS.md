@@ -44,7 +44,7 @@ Create initial project structure and runnable game entry point.
 
 ## Task 1 – Game Loop & State Management
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -73,7 +73,7 @@ Implement a basic game state system.
 
 ## Task 2 – Player Movement
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
