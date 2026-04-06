@@ -21,6 +21,7 @@ class GameSession:
         self.player: Player
         self.hazards: list[Hazard]
         self.score_seconds: float
+        self._spawn_pulse_centers: list[tuple[int, int]]
         self.start_new_run()
 
     @property
@@ -37,10 +38,13 @@ class GameSession:
         self.spawn_controller.reset()
         self.hazards = self._create_initial_hazards(self.player)
         self.score_seconds = 0.0
+        self._spawn_pulse_centers: list[tuple[int, int]] = [
+            hazard.rect.center for hazard in self.hazards
+        ]
 
-    def update_playing(self, delta_seconds: float, keys: pygame.key.ScancodeWrapper) -> bool:
+    def update_playing(self, delta_seconds: float, movement_input: pygame.Vector2) -> bool:
         self.score_seconds += delta_seconds
-        self.player.update(delta_seconds, keys, self.bounds)
+        self.player.update(delta_seconds, movement_input, self.bounds)
         player_center = pygame.Vector2(self.player.rect.center)
         target_hazard_speed = self.BASE_HAZARD_SPEED * self.difficulty_multiplier
         spawn_count = self.spawn_controller.spawn_count_for_frame(
@@ -49,18 +53,25 @@ class GameSession:
             len(self.hazards),
         )
         for _ in range(spawn_count):
-            hazard = Hazard(speed=target_hazard_speed)
+            hazard = self.spawn_controller.create_hazard(speed=self.BASE_HAZARD_SPEED)
             self.spawn_controller.configure_hazard(hazard, player_center)
             self.hazards.append(hazard)
+            self._spawn_pulse_centers.append(hazard.rect.center)
 
         for hazard in self.hazards:
-            hazard.set_speed(target_hazard_speed)
-            hazard.update(delta_seconds)
+            hazard.set_speed(hazard.base_speed * self.difficulty_multiplier)
+            hazard.update(delta_seconds, player_center)
             if hazard.is_out_of_bounds(self.bounds):
                 self.spawn_controller.configure_hazard(hazard, player_center)
+                self._spawn_pulse_centers.append(hazard.rect.center)
             if self.player.rect.colliderect(hazard.rect):
                 return True
         return False
+
+    def consume_spawn_pulse_centers(self) -> list[tuple[int, int]]:
+        centers = list(self._spawn_pulse_centers)
+        self._spawn_pulse_centers.clear()
+        return centers
 
     def draw_playing(self, surface: pygame.Surface) -> None:
         for hazard in self.hazards:
@@ -74,7 +85,10 @@ class GameSession:
         return Player(spawn_x, spawn_y, size=size)
 
     def _create_initial_hazards(self, player: Player) -> list[Hazard]:
-        hazards = [Hazard(speed=self.BASE_HAZARD_SPEED) for _ in range(self.spawn_controller.initial_hazards)]
+        hazards = [
+            self.spawn_controller.create_hazard(speed=self.BASE_HAZARD_SPEED)
+            for _ in range(self.spawn_controller.initial_hazards)
+        ]
         target = pygame.Vector2(player.rect.center)
         for hazard in hazards:
             self.spawn_controller.configure_hazard(hazard, target)
