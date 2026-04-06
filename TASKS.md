@@ -97,7 +97,7 @@ Add controllable player entity.
 
 ## Task 3 – Core Mechanic (Dodge or Avoid)
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -123,7 +123,7 @@ Implement the primary gameplay mechanic.
 
 ## Task 4 – Collision System
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 

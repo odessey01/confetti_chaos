@@ -6,6 +6,7 @@ from enum import Enum
 
 import pygame
 
+from enemies import Hazard
 from player import Player
 
 
@@ -13,6 +14,7 @@ WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 WINDOW_TITLE = "Confetti Chaos"
 TARGET_FPS = 60
+HAZARD_COUNT = 1
 
 
 class GameState(str, Enum):
@@ -34,6 +36,14 @@ def create_player() -> Player:
     return Player(spawn_x, spawn_y, size=size)
 
 
+def create_hazards(bounds: pygame.Rect, player: Player) -> list[Hazard]:
+    hazards = [Hazard() for _ in range(HAZARD_COUNT)]
+    target = pygame.Vector2(player.rect.center)
+    for hazard in hazards:
+        hazard.reset_toward_target(bounds, target)
+    return hazards
+
+
 def main() -> int:
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -42,6 +52,7 @@ def main() -> int:
     font = pygame.font.Font(None, 48)
     world_bounds = screen.get_rect()
     player = create_player()
+    hazards = create_hazards(world_bounds, player)
 
     state = GameState.MENU
     running = True
@@ -54,22 +65,34 @@ def main() -> int:
                 if state == GameState.MENU and event.key in (pygame.K_SPACE, pygame.K_RETURN):
                     state = transition_state(state, GameState.PLAYING)
                     player = create_player()
+                    hazards = create_hazards(world_bounds, player)
                 elif state == GameState.PLAYING and event.key == pygame.K_k:
                     state = transition_state(state, GameState.GAME_OVER)
                 elif state == GameState.GAME_OVER and event.key in (pygame.K_r, pygame.K_SPACE):
                     state = transition_state(state, GameState.PLAYING)
                     player = create_player()
+                    hazards = create_hazards(world_bounds, player)
 
         if state == GameState.PLAYING:
             keys = pygame.key.get_pressed()
             player.update(delta_seconds, keys, world_bounds)
+            player_center = pygame.Vector2(player.rect.center)
+            for hazard in hazards:
+                hazard.update(delta_seconds)
+                if hazard.is_out_of_bounds(world_bounds):
+                    hazard.reset_toward_target(world_bounds, player_center)
+                if player.rect.colliderect(hazard.rect):
+                    state = transition_state(state, GameState.GAME_OVER)
+                    break
 
         screen.fill((20, 20, 30))
 
         if state == GameState.MENU:
             label = "MENU: Press Space or Enter to Start"
         elif state == GameState.PLAYING:
-            label = "PLAYING: Move with WASD/Arrows, K = Game Over"
+            label = "PLAYING: Avoid hazards (WASD/Arrows)"
+            for hazard in hazards:
+                hazard.draw(screen)
             player.draw(screen)
         else:
             label = "GAME OVER: Press R or Space to Restart"
