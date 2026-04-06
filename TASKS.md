@@ -407,6 +407,158 @@ Add basic sound feedback to improve feel.
 ## Milestone – Prototype Complete
 At this point the game should feel like a real, replayable product rather than a technical demo.
 
+## Task 16 – Visual Feedback & Juice Pass
+
+**Status:** DONE
+
+### Objective
+
+Improve clarity and game feel through simple visual feedback.
+
+### Requirements
+
+* Add visual feedback for:
+
+  * player hit / death
+  * hazard spawn or movement emphasis
+  * state transitions (menu → play, play → game over)
+
+* Consider lightweight effects such as:
+
+  * flash on collision
+  * brief screen shake
+  * fade in/out text
+  * simple particle burst
+
+* Keep effects minimal and performance-friendly
+
+### Acceptance Criteria
+
+* Important gameplay events are more visible
+* Visual feedback improves feel without clutter
+* No noticeable performance drop
+
+---
+
+## Task 17 – Second Hazard or Enemy Type
+
+**Status:** DONE
+
+### Objective
+
+Increase gameplay variety with an additional challenge type.
+
+### Requirements
+
+* Add one new hazard/enemy behavior distinct from the first
+
+* Examples:
+
+  * faster but fragile hazard
+  * slower tracking hazard
+  * hazard with intermittent movement
+  * obstacle that constrains movement
+
+* Ensure both hazard types can appear during gameplay
+
+* Balance for fairness and readability
+
+### Acceptance Criteria
+
+* New hazard type is visually and behaviorally distinct
+* Gameplay variety is noticeably improved
+* Combined hazard behavior remains fair and playable
+
+---
+
+## Task 18 – Pause & Basic Settings
+
+**Status:** DONE
+
+### Objective
+
+Add a minimal pause flow and player control over basic settings.
+
+### Requirements
+
+* Add pause toggle (e.g., Esc or P)
+
+* While paused:
+
+  * stop gameplay updates
+  * show pause message or overlay
+
+* Add basic settings support for:
+
+  * audio on/off or volume placeholder
+  * window mode placeholder or future config hook
+
+### Acceptance Criteria
+
+* Player can pause and resume reliably
+* No gameplay state corruption while paused
+* Settings structure exists and can be extended later
+
+---
+
+## Task 19 – Controller Support
+
+**Status:** DONE
+
+### Objective
+
+Prepare the game for a more Steam-friendly input experience.
+
+### Requirements
+
+* Add basic controller/gamepad input support
+
+* Support at minimum:
+
+  * movement
+  * start/restart
+  * menu confirm
+
+* Preserve keyboard support
+
+* Ensure input handling remains modular
+
+### Acceptance Criteria
+
+* Game is playable with either keyboard or controller
+* Input prompts or behavior remain clear
+* No regression to keyboard controls
+
+---
+
+## Task 20 – Packaging & Release Prep
+
+**Status:** DONE
+
+### Objective
+
+Create a repeatable build path for local release testing.
+
+### Requirements
+
+* Add packaging configuration for standalone build
+
+* Validate:
+
+  * assets are bundled correctly
+  * executable launches cleanly
+  * save/high score behavior works in packaged build
+
+* Document build steps
+
+* Add release checklist for local validation
+
+### Acceptance Criteria
+
+* A standalone build can be created successfully
+* Packaged game runs without requiring local Python install
+* Build steps are documented clearly for future Steam upload workflow
+
 ## Execution Rules for Agents
 
 For each task:

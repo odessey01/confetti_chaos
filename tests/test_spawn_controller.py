@@ -15,9 +15,36 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from systems.spawn_controller import SpawnController  # noqa: E402
+from enemies import Hazard, TrackingHazard  # noqa: E402
+
+
+class DeterministicRng:
+    def __init__(self) -> None:
+        self._random_values = [0.1, 0.9]
+        self._random_idx = 0
+
+    def random(self) -> float:
+        value = self._random_values[self._random_idx % len(self._random_values)]
+        self._random_idx += 1
+        return value
+
+    def choice(self, seq: tuple[str, ...] | list[str]) -> str:
+        return seq[0]
+
+    def uniform(self, a: float, b: float) -> float:
+        return (a + b) / 2.0
 
 
 class SpawnControllerValidationTests(unittest.TestCase):
+    def test_create_hazard_produces_distinct_types(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(bounds, tracking_spawn_chance=0.5, rng=DeterministicRng())
+        first = controller.create_hazard(speed=220.0)
+        second = controller.create_hazard(speed=220.0)
+
+        self.assertIsInstance(first, TrackingHazard)
+        self.assertIsInstance(second, Hazard)
+
     def test_spawn_positions_respect_safe_distance(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
         controller = SpawnController(bounds, safe_spawn_distance=220.0)

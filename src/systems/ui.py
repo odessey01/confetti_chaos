@@ -33,11 +33,19 @@ class UiRenderer:
         title_rect = title_surface.get_rect(center=(center_x, center_y - 120))
         surface.blit(title_surface, title_rect)
 
-        start_surface = self._prompt_font.render("Press Enter or Space to Start", True, self._prompt_color)
+        start_surface = self._prompt_font.render(
+            "Press Enter/Space or Gamepad A/Start",
+            True,
+            self._prompt_color,
+        )
         start_rect = start_surface.get_rect(center=(center_x, center_y - 20))
         surface.blit(start_surface, start_rect)
 
-        quit_surface = self._prompt_font.render("Press Q or Esc to Quit", True, self._prompt_color)
+        quit_surface = self._prompt_font.render(
+            "Press Q/Esc or Gamepad Back to Quit",
+            True,
+            self._prompt_color,
+        )
         quit_rect = quit_surface.get_rect(center=(center_x, center_y + 30))
         surface.blit(quit_surface, quit_rect)
 
@@ -48,3 +56,18 @@ class UiRenderer:
         )
         high_score_rect = high_score_surface.get_rect(center=(center_x, center_y + 90))
         surface.blit(high_score_surface, high_score_rect)
+
+    def draw_paused(self, surface: pygame.Surface, audio_enabled: bool) -> None:
+        pause_surface = self._state_font.render("PAUSED", True, self._state_color)
+        pause_rect = pause_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 20))
+        surface.blit(pause_surface, pause_rect)
+
+        prompt = "Press P/Esc or Gamepad Start/Back to Resume"
+        prompt_surface = self._prompt_font.render(prompt, True, self._prompt_color)
+        prompt_rect = prompt_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 20))
+        surface.blit(prompt_surface, prompt_rect)
+
+        audio_label = f"Audio: {'On' if audio_enabled else 'Off'} (Press M to Toggle)"
+        audio_surface = self._prompt_font.render(audio_label, True, self._prompt_color)
+        audio_rect = audio_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 60))
+        surface.blit(audio_surface, audio_rect)

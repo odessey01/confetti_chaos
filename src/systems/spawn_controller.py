@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import random
+from typing import Protocol
 
 import pygame
 
-from enemies import Hazard
+from enemies import Hazard, TrackingHazard
+
+
+class RandomLike(Protocol):
+    def choice(self, seq: tuple[str, ...] | list[str]) -> str:
+        ...
+
+    def random(self) -> float:
+        ...
+
+    def uniform(self, a: float, b: float) -> float:
+        ...
 
 
 class SpawnController:
@@ -19,6 +31,8 @@ class SpawnController:
         base_spawn_interval: float = 2.2,
         min_spawn_interval: float = 0.75,
         safe_spawn_distance: float = 220.0,
+        tracking_spawn_chance: float = 0.35,
+        rng: RandomLike | None = None,
     ) -> None:
         self.bounds = bounds
         self.initial_hazards = initial_hazards
@@ -26,6 +40,8 @@ class SpawnController:
         self.base_spawn_interval = base_spawn_interval
         self.min_spawn_interval = min_spawn_interval
         self.safe_spawn_distance = safe_spawn_distance
+        self.tracking_spawn_chance = tracking_spawn_chance
+        self._rng = rng if rng is not None else random.Random()
         self._spawn_timer = 0.0
 
     def reset(self) -> None:
@@ -61,6 +77,11 @@ class SpawnController:
         spawn = self.sample_spawn_position(player_center, hazard.size)
         hazard.launch_toward_target(spawn, player_center)
 
+    def create_hazard(self, speed: float) -> Hazard:
+        if self._rng.random() < self.tracking_spawn_chance:
+            return TrackingHazard(speed=speed * 0.82)
+        return Hazard(speed=speed)
+
     def sample_spawn_position(
         self,
         player_center: pygame.Vector2,
@@ -73,17 +94,17 @@ class SpawnController:
         return self._farthest_edge_spawn(player_center, hazard_size)
 
     def _random_edge_spawn(self, hazard_size: int) -> pygame.Vector2:
-        side = random.choice(("left", "right", "top", "bottom"))
+        side = self._rng.choice(("left", "right", "top", "bottom"))
         max_x = max(self.bounds.width - hazard_size, 0)
         max_y = max(self.bounds.height - hazard_size, 0)
 
         if side == "left":
-            return pygame.Vector2(-hazard_size, random.uniform(0, max_y))
+            return pygame.Vector2(-hazard_size, self._rng.uniform(0, max_y))
         if side == "right":
-            return pygame.Vector2(self.bounds.width, random.uniform(0, max_y))
+            return pygame.Vector2(self.bounds.width, self._rng.uniform(0, max_y))
         if side == "top":
-            return pygame.Vector2(random.uniform(0, max_x), -hazard_size)
-        return pygame.Vector2(random.uniform(0, max_x), self.bounds.height)
+            return pygame.Vector2(self._rng.uniform(0, max_x), -hazard_size)
+        return pygame.Vector2(self._rng.uniform(0, max_x), self.bounds.height)
 
     def _farthest_edge_spawn(
         self,

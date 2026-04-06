@@ -12,6 +12,7 @@ from .paths import asset_path
 class AudioManager:
     def __init__(self) -> None:
         self._enabled = False
+        self._user_enabled = True
         self._start_sound: pygame.mixer.Sound | None = None
         self._collision_sound: pygame.mixer.Sound | None = None
         self._warning_printed = False
@@ -42,8 +43,11 @@ class AudioManager:
     def play_collision(self) -> None:
         self._play(self._collision_sound)
 
+    def set_enabled(self, enabled: bool) -> None:
+        self._user_enabled = enabled
+
     def _play(self, sound: pygame.mixer.Sound | None) -> None:
-        if not self._enabled or sound is None:
+        if not self._enabled or not self._user_enabled or sound is None:
             return
         try:
             sound.play()

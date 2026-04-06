@@ -46,7 +46,7 @@ A short, repeatable gameplay loop where the player:
 
 ## 4. Visual & Artistic Direction
 
-* Style: Minimalist / Tonalist / Atmospheric (align with your painting style if desired)
+* Style: Minimalist / Tonalist / Atmospheric 
 
 * Color Palette:
 

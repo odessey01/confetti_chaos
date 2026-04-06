@@ -21,7 +21,11 @@ def assets_dir() -> Path:
 
 
 def saves_dir() -> Path:
-    directory = project_root() / "saves"
+    if getattr(sys, "frozen", False):
+        base = Path.home() / "confetti-chaos"
+    else:
+        base = project_root()
+    directory = base / "saves"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 

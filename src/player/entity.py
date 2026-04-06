@@ -19,17 +19,13 @@ class Player:
     def reset_position(self, x: float, y: float) -> None:
         self.position.update(x, y)
 
-    def update(self, delta_seconds: float, keys: pygame.key.ScancodeWrapper, bounds: pygame.Rect) -> None:
-        move_x = (
-            float(keys[pygame.K_d] or keys[pygame.K_RIGHT])
-            - float(keys[pygame.K_a] or keys[pygame.K_LEFT])
-        )
-        move_y = (
-            float(keys[pygame.K_s] or keys[pygame.K_DOWN])
-            - float(keys[pygame.K_w] or keys[pygame.K_UP])
-        )
-
-        movement = pygame.Vector2(move_x, move_y)
+    def update(
+        self,
+        delta_seconds: float,
+        movement_input: pygame.Vector2,
+        bounds: pygame.Rect,
+    ) -> None:
+        movement = pygame.Vector2(movement_input.x, movement_input.y)
         if movement.length_squared() > 0:
             movement = movement.normalize() * self.speed * delta_seconds
             self.position += movement

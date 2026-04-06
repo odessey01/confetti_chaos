@@ -9,6 +9,7 @@ class Hazard:
     def __init__(self, size: int = 34, speed: float = 220.0) -> None:
         self.size = size
         self.speed = speed
+        self.base_speed = speed
         self.position = pygame.Vector2(0, 0)
         self.velocity = pygame.Vector2(0, 0)
         self.color = (255, 100, 100)
@@ -29,7 +30,7 @@ class Hazard:
         if self.velocity.length_squared() > 0:
             self.velocity = self.velocity.normalize() * self.speed
 
-    def update(self, delta_seconds: float) -> None:
+    def update(self, delta_seconds: float, target_center: pygame.Vector2 | None = None) -> None:
         self.position += self.velocity * delta_seconds
 
     def is_out_of_bounds(self, bounds: pygame.Rect, margin: int = 80) -> bool:
