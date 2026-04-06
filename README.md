@@ -8,7 +8,7 @@ This repository now includes a small Python game scaffold with:
 - `src/confetti_chaos/settings.py` for app settings and runtime paths
 - `src/confetti_chaos/scenes/` for a simple scene manager plus starter scenes
 - `src/confetti_chaos/save_data.py` for JSON save/load support
-- `src/confetti_chaos/game.py` and `src/confetti_chaos/__main__.py` as the main entry point
+- `src/main.py` as the active vertical-slice game entry point
 - `pyproject.toml` and `requirements.txt` for dependencies and packaging
 - `docs/PACKAGING.md` for install/build notes
 
@@ -19,13 +19,13 @@ confetti_chaos/
 |-- docs/
 |   `-- PACKAGING.md
 |-- src/
+|   |-- main.py
 |   `-- confetti_chaos/
 |       |-- scenes/
 |       |   |-- base.py
 |       |   |-- gameplay.py
 |       |   |-- manager.py
 |       |   `-- title.py
-|       |-- __main__.py
 |       |-- game.py
 |       |-- save_data.py
 |       `-- settings.py
@@ -40,5 +40,5 @@ confetti_chaos/
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e .
-python -m confetti_chaos
+python src/main.py
 ```

@@ -97,7 +97,7 @@ Add controllable player entity.
 
 ## Task 3 – Core Mechanic (Dodge or Avoid)
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -123,7 +123,7 @@ Implement the primary gameplay mechanic.
 
 ## Task 4 – Collision System
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -145,7 +145,7 @@ Detect interactions between player and hazards.
 
 ## Task 5 – Score System
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -165,7 +165,7 @@ Track player performance.
 
 ## Task 6 – Game Over + Restart Loop
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -186,7 +186,7 @@ Enable fast replay loop.
 
 ## Task 7 – Basic UI Layer
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -208,7 +208,7 @@ Add minimal UI elements.
 
 ## Task 8 – Basic Structure Refactor
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -232,7 +232,7 @@ Clean up code for modularity.
 
 ## Task 9 – Basic Testing / Validation
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -254,7 +254,7 @@ Ensure stability of core systems.
 
 ## Task 10 – Pre-Packaging Prep
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -274,6 +274,138 @@ Prepare project for packaging.
 * Ready for PyInstaller step
 
 ---
+
+## Task 11 – Difficulty Scaling
+
+**Status:** DONE
+
+### Objective
+
+Make the game become more challenging over time.
+
+### Requirements
+
+* Increase hazard/enemy pressure gradually
+
+* Scale one or more of:
+
+  * spawn rate
+  * movement speed
+  * number of simultaneous hazards
+
+* Keep early game fair
+
+* Avoid sudden, unfair spikes
+
+### Acceptance Criteria
+
+* Game difficulty clearly ramps up over time
+* Early gameplay is manageable
+* Difficulty feels intentional, not random
+
+---
+
+## Task 12 – Spawn System Refactor
+
+**Status:** DONE
+
+### Objective
+
+Create a cleaner and more controllable spawning system.
+
+### Requirements
+
+* Centralize hazard/enemy spawning logic
+* Support configurable spawn timing
+* Prevent impossible or unfair spawn locations
+* Make spawn parameters easy to tune
+
+### Acceptance Criteria
+
+* Spawn behavior is predictable and adjustable
+* No hazards spawn directly on the player
+* Spawn logic is separated from main loop
+
+---
+
+## Task 13 – Main Menu Polish
+
+**Status:** DONE
+
+### Objective
+
+Turn the start flow into a more complete player experience.
+
+### Requirements
+
+* Add a simple title screen
+
+* Show:
+
+  * game title
+  * start prompt
+  * quit prompt
+
+* Ensure transition into gameplay is smooth
+
+### Acceptance Criteria
+
+* Menu is clear and readable
+* Player can start or quit without confusion
+* State transition from menu to gameplay is reliable
+
+---
+
+## Task 14 – High Score Persistence
+
+**Status:** DONE
+
+### Objective
+
+Save player progress between runs.
+
+### Requirements
+
+* Save high score locally
+* Load high score on startup
+* Display high score in menu or game over screen
+* Handle missing save file safely
+
+### Acceptance Criteria
+
+* High score persists between sessions
+* Game does not crash if save file is missing or corrupt
+* High score display updates correctly
+
+---
+
+## Task 15 – Audio Pass (Minimal)
+
+**Status:** DONE
+
+### Objective
+
+Add basic sound feedback to improve feel.
+
+### Requirements
+
+* Add at least:
+
+  * one sound for collision/game over
+  * one sound for menu start or restart
+
+* Keep implementation simple
+
+* Allow game to run even if audio assets are unavailable
+
+### Acceptance Criteria
+
+* Sounds play at the correct moments
+* Missing or failed audio load does not crash the game
+* Audio improves feedback without becoming distracting
+
+## Milestone – Prototype Complete
+At this point the game should feel like a real, replayable product rather than a technical demo.
 
 ## Execution Rules for Agents
 

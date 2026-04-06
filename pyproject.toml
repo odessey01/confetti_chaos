@@ -12,8 +12,5 @@ dependencies = [
   "pygame-ce>=2.5,<3.0",
 ]
 
-[project.scripts]
-confetti-chaos = "confetti_chaos.__main__:main"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/confetti_chaos"]

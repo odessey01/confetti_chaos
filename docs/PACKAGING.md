@@ -11,16 +11,10 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
-Run the game:
+Run the active vertical-slice game from repository root:
 
 ```powershell
-python -m confetti_chaos
-```
-
-Or use the generated console script:
-
-```powershell
-confetti-chaos
+python src/main.py
 ```
 
 ## Distribution options
@@ -38,9 +32,18 @@ For a standalone desktop executable, PyInstaller is a common next step:
 
 ```powershell
 pip install pyinstaller
-pyinstaller --name confetti-chaos --onefile -m confetti_chaos
+pyinstaller --name confetti-chaos --onefile --add-data "assets;assets" src/main.py
 ```
 
-If the game later depends on sprites, sounds, or fonts, switch away from
-`--onefile` or add explicit asset collection rules so packaged builds can
-find those files at runtime.
+The runtime path helpers in `src/systems/paths.py` support both normal and
+frozen execution and ensure:
+- no hardcoded absolute paths
+- assets resolved from runtime root
+- writable save directory at `<project-root>/saves` for local runs
+
+## Validation commands
+
+```powershell
+python -m unittest discover -s tests -v
+python src/main.py
+```
