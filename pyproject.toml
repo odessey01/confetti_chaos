@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "confetti-chaos"
+version = "0.1.0"
+description = "A colorful Python game foundation for Confetti Chaos."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pygame-ce>=2.5,<3.0",
+]
+
+[project.scripts]
+confetti-chaos = "confetti_chaos.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/confetti_chaos"]
