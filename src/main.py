@@ -6,8 +6,15 @@ from enum import Enum
 
 import pygame
 
-from enemies import Hazard
-from player import Player
+from systems import (
+    AudioManager,
+    GameSession,
+    UiRenderer,
+    assets_dir,
+    load_high_score,
+    save_high_score,
+    saves_dir,
+)
 
 
 WINDOW_WIDTH = 1280
@@ -29,30 +36,19 @@ def transition_state(current: GameState, target: GameState) -> GameState:
     return target
 
 
-def create_player() -> Player:
-    size = 40
-    spawn_x = (WINDOW_WIDTH - size) / 2
-    spawn_y = (WINDOW_HEIGHT - size) / 2
-    return Player(spawn_x, spawn_y, size=size)
-
-
-def create_hazards(bounds: pygame.Rect, player: Player) -> list[Hazard]:
-    hazards = [Hazard() for _ in range(HAZARD_COUNT)]
-    target = pygame.Vector2(player.rect.center)
-    for hazard in hazards:
-        hazard.reset_toward_target(bounds, target)
-    return hazards
-
-
 def main() -> int:
+    assets_dir().mkdir(parents=True, exist_ok=True)
+    saves_dir()
+    high_score = load_high_score()
+
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption(WINDOW_TITLE)
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 48)
+    audio = AudioManager()
+    ui = UiRenderer()
     world_bounds = screen.get_rect()
-    player = create_player()
-    hazards = create_hazards(world_bounds, player)
+    session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
 
     state = GameState.MENU
     running = True
@@ -64,42 +60,41 @@ def main() -> int:
             elif event.type == pygame.KEYDOWN:
                 if state == GameState.MENU and event.key in (pygame.K_SPACE, pygame.K_RETURN):
                     state = transition_state(state, GameState.PLAYING)
-                    player = create_player()
-                    hazards = create_hazards(world_bounds, player)
-                elif state == GameState.PLAYING and event.key == pygame.K_k:
-                    state = transition_state(state, GameState.GAME_OVER)
+                    session.start_new_run()
+                    audio.play_start_or_restart()
+                elif state == GameState.MENU and event.key in (pygame.K_q, pygame.K_ESCAPE):
+                    running = False
                 elif state == GameState.GAME_OVER and event.key in (pygame.K_r, pygame.K_SPACE):
                     state = transition_state(state, GameState.PLAYING)
-                    player = create_player()
-                    hazards = create_hazards(world_bounds, player)
+                    session.start_new_run()
+                    audio.play_start_or_restart()
 
         if state == GameState.PLAYING:
             keys = pygame.key.get_pressed()
-            player.update(delta_seconds, keys, world_bounds)
-            player_center = pygame.Vector2(player.rect.center)
-            for hazard in hazards:
-                hazard.update(delta_seconds)
-                if hazard.is_out_of_bounds(world_bounds):
-                    hazard.reset_toward_target(world_bounds, player_center)
-                if player.rect.colliderect(hazard.rect):
-                    state = transition_state(state, GameState.GAME_OVER)
-                    break
+            collided = session.update_playing(delta_seconds, keys)
+            if collided:
+                audio.play_collision()
+                if session.score_value > high_score:
+                    high_score = session.score_value
+                    save_high_score(high_score)
+                state = transition_state(state, GameState.GAME_OVER)
 
         screen.fill((20, 20, 30))
 
+        ui.draw_score(screen, session.score_value)
+
         if state == GameState.MENU:
-            label = "MENU: Press Space or Enter to Start"
+            ui.draw_menu(screen, WINDOW_TITLE, high_score)
         elif state == GameState.PLAYING:
             label = "PLAYING: Avoid hazards (WASD/Arrows)"
-            for hazard in hazards:
-                hazard.draw(screen)
-            player.draw(screen)
+            session.draw_playing(screen)
+            ui.draw_state_text(screen, label)
         else:
-            label = "GAME OVER: Press R or Space to Restart"
-
-        text_surface = font.render(label, True, (235, 235, 235))
-        text_rect = text_surface.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
-        screen.blit(text_surface, text_rect)
+            label = (
+                f"GAME OVER: Score {session.score_value} | High Score {high_score} "
+                "- Press R or Space to Restart"
+            )
+            ui.draw_state_text(screen, label)
 
         pygame.display.flip()
 
