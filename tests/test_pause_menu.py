@@ -72,6 +72,7 @@ class PauseMenuValidationTests(unittest.TestCase):
     def test_should_update_playing_freeze_gate(self) -> None:
         self.assertTrue(should_update_playing(GameState.PLAYING))
         self.assertFalse(should_update_playing(GameState.PAUSED))
+        self.assertFalse(should_update_playing(GameState.LEVEL_UP))
 
     def test_execute_pause_actions(self) -> None:
         session = _FakeSession()

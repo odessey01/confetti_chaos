@@ -1393,6 +1393,327 @@ Ensure environment system remains efficient and stable.
 * No buildup of unused objects over time
 * System remains stable during long play sessions
 
+## Task 80 – Run Progression System Foundation
+
+**Status:** DONE
+
+### Objective
+
+Create the core progression framework for leveling up during a run.
+
+### Requirements
+
+* Add player progression values for the current run:
+
+  * current level
+  * current XP
+  * XP required for next level
+
+* Define a simple XP growth formula
+
+* Reset progression values correctly at the start of a new run
+
+* Keep this system separate from stage/level progression
+
+### Acceptance Criteria
+
+* Player can gain XP during a run
+* Run level increases when XP threshold is reached
+* Progression resets cleanly on restart
+
+---
+
+## Task 81 – XP Source Integration
+
+**Status:** DONE
+
+### Objective
+
+Define how the player earns XP during gameplay.
+
+### Requirements
+
+* Award XP from gameplay events such as:
+
+  * enemy kills
+  * piñata kills
+  * boss defeat bonus
+
+* Allow different enemy types to grant different XP values
+
+* Keep XP values configurable and easy to tune
+
+### Acceptance Criteria
+
+* XP is awarded reliably on qualifying events
+* Different enemy types can give different XP rewards
+* XP gain feels consistent and visible in normal play
+
+---
+
+## Task 82 – XP Bar & Run Level UI
+
+**Status:** DONE
+
+### Objective
+
+Make progression visible and readable during gameplay.
+
+### Requirements
+
+* Add UI elements for:
+
+  * current run level
+  * XP bar showing progress toward next level
+
+* Position UI so it does not interfere with score, health, or gameplay readability
+
+* Update UI in real time as XP is gained
+
+### Acceptance Criteria
+
+* Player can clearly see current run level
+* XP bar updates immediately and accurately
+* UI remains readable during active gameplay
+
+---
+
+## Task 83 – Level-Up Trigger & Game Pause Flow
+
+**Status:** DONE
+
+### Objective
+
+Pause active gameplay and enter an upgrade selection state when the player levels up.
+
+### Requirements
+
+* When XP threshold is met:
+
+  * trigger level-up event
+  * pause or freeze gameplay updates
+  * open upgrade selection overlay
+
+* Ensure the level-up state is distinct from pause/menu states
+
+* Prevent enemy movement, attacks, and spawn updates while choosing an upgrade
+
+### Acceptance Criteria
+
+* Level-up reliably interrupts gameplay
+* Upgrade selection appears cleanly without state corruption
+* Gameplay resumes correctly after choice is made
+
+---
+
+## Task 84 – Upgrade Data Model
+
+**Status:** DONE
+
+### Objective
+
+Create a clean, data-driven structure for run upgrades.
+
+### Requirements
+
+* Define upgrade data including:
+
+  * id
+  * name
+  * description
+  * category
+  * effect values
+  * optional max stack or cap
+
+* Keep upgrade definitions centralized and easy to extend
+
+* Support repeatable and non-repeatable upgrades
+
+### Acceptance Criteria
+
+* Upgrades are defined in one clear location
+* New upgrades can be added without rewriting core logic
+* Upgrade metadata is usable by both logic and UI
+
+---
+
+## Task 85 – Upgrade Selection System (Choose 1 of 3)
+
+**Status:** DONE
+
+### Objective
+
+Present a set of upgrade choices to the player when leveling up.
+
+### Requirements
+
+* On level-up, show 3 upgrade choices
+* Randomly select from valid upgrade pool
+* Avoid invalid or duplicate choices where possible
+* Allow keyboard/controller-friendly selection flow
+
+### Acceptance Criteria
+
+* Player is presented with 3 valid upgrade options
+* Selection input is reliable and readable
+* Upgrade choice closes the overlay and resumes gameplay
+
+---
+
+## Task 86 – Initial Upgrade Pool (Phase 1 Set)
+
+**Status:** DONE
+
+### Objective
+
+Create the first small set of run upgrades.
+
+### Requirements
+
+* Add an initial upgrade pool of approximately 6–10 upgrades
+
+* Focus on simple, high-clarity modifiers such as:
+
+  * movement speed increase
+  * fire rate increase
+  * projectile speed increase
+  * additional projectile
+  * larger confetti burst radius
+  * score gain bonus
+  * enemy slow effect (light)
+  * stronger projectile damage
+
+* Keep effects simple and immediately noticeable
+
+### Acceptance Criteria
+
+* Upgrade pool is varied enough to support meaningful choice
+* Each upgrade produces a noticeable gameplay effect
+* No upgrade requires a large new subsystem to function
+
+---
+
+## Task 87 – Upgrade Application Logic
+
+**Status:** DONE
+
+### Objective
+
+Apply chosen upgrades cleanly to active gameplay systems.
+
+### Requirements
+
+* Implement logic to apply upgrade effects to relevant systems:
+
+  * player movement
+  * weapon/projectiles
+  * score systems
+  * enemy interactions
+
+* Ensure stacked upgrades behave correctly
+
+* Prevent broken values or runaway effects through sensible caps where needed
+
+### Acceptance Criteria
+
+* Chosen upgrades immediately affect gameplay
+* Stacking behavior is predictable and stable
+* No upgrade causes crashes or invalid state
+
+---
+
+## Task 88 – Upgrade UI Presentation & Readability
+
+**Status:** DONE
+
+### Objective
+
+Make upgrade choices understandable and appealing.
+
+### Requirements
+
+* Display for each upgrade:
+
+  * name
+  * short description
+  * clear effect summary
+
+* Highlight current selection
+
+* Keep overlay visually clean and fast to read
+
+* Maintain readability over the game background
+
+### Acceptance Criteria
+
+* Upgrade screen is easy to understand quickly
+* Players can make a choice without confusion
+* UI presentation supports repeated use during a run
+
+---
+
+## Task 89 – Duplicate Rules, Weighting, and Validity Filtering
+
+**Status:** DONE
+
+### Objective
+
+Improve the quality of upgrade choice generation.
+
+### Requirements
+
+* Prevent choices that are:
+
+  * invalid for current state
+  * already capped
+  * meaningless duplicates in the same choice set
+
+* Add simple weighting support so some upgrades can be:
+
+  * common
+  * uncommon
+  * situational
+
+* Ensure the selection system still works when the pool becomes constrained
+
+### Acceptance Criteria
+
+* Upgrade choices remain useful across the run
+* Capped or invalid upgrades do not appear unnecessarily
+* Choice quality feels intentional rather than random
+
+---
+
+## Task 90 – Phase 1 Progression Balance Pass
+
+**Status:** DONE
+
+### Objective
+
+Tune the first progression loop so leveling up feels rewarding and well-paced.
+
+### Requirements
+
+* Tune:
+
+  * XP gain rates
+  * XP thresholds
+  * frequency of level-ups
+  * strength of starting upgrades
+  * upgrade stacking limits
+
+* Validate progression across:
+
+  * early run
+  * mid run
+  * boss encounters
+
+### Acceptance Criteria
+
+* Player levels up often enough to feel rewarded
+* Upgrades create noticeable power growth without trivializing the run
+* Progression pacing feels appropriate for a survivor-style game
+
 
 # Execution Rules for Agents
 

@@ -9,6 +9,8 @@ from player import Player
 from player.projectile import Projectile
 from .confetti import Confetti
 from .level_config import LevelConfig, get_level_config, LEVEL_1_SPAWN_RATE
+from .run_progression import RunProgression
+from .run_upgrades import RunUpgradeSystem, UpgradeDefinition
 from .settings import clamp_selected_start_level
 from .spawn_controller import SpawnController
 
@@ -22,9 +24,20 @@ class GameSession:
     BOSS_CELEBRATION_TIME = 1.5
     LEVEL_UP_INTERVAL = 30.0
     POINTS_PER_LEVEL = 500
+    BASE_PLAYER_SPEED = 320.0
+    BASE_PROJECTILE_SPEED = 500.0
+    BASE_FIRE_COOLDOWN = 0.2
     MAX_ACTIVE_ENEMY_SPRAYS = 48
     SPRAYER_PROJECTILE_LIFETIME = 0.58
     SPRAYER_PROJECTILE_SIZE = 9
+    XP_REWARDS: dict[str, int] = {
+        "tracking": 12,
+        "balloon": 12,
+        "mini_balloon": 10,
+        "pinata": 24,
+        "confetti_sprayer": 28,
+        "boss_balloon": 220,
+    }
 
     def __init__(self, bounds: pygame.Rect, hazard_count: int = 1) -> None:
         self.bounds = bounds
@@ -37,6 +50,11 @@ class GameSession:
         self.confetti: Confetti
         self.score_seconds: float
         self.elapsed_time: float
+        self.run_progression = RunProgression()
+        self.run_upgrades = RunUpgradeSystem()
+        self._current_upgrade_choices: list[UpgradeDefinition] = []
+        self.max_active_projectiles = 3
+        self._weapon_cooldown_timer = 0.0
         self._spawn_pulse_centers: list[tuple[int, int]]
         self._boss_active: bool = False
         self._boss_defeated: bool = False
@@ -81,6 +99,11 @@ class GameSession:
         self.projectiles = []
         self.enemy_sprays = []
         self.confetti = Confetti()
+        self.run_progression.reset()
+        self.run_upgrades.reset()
+        self._current_upgrade_choices = []
+        self.max_active_projectiles = 3
+        self._weapon_cooldown_timer = 0.0
         self.score_seconds = 0.0
         self.elapsed_time = 0.0
         self.hazards = self._create_initial_hazards(self.player)
@@ -124,6 +147,9 @@ class GameSession:
 
         self.elapsed_time += delta_seconds
         self.score_seconds += delta_seconds
+        self._weapon_cooldown_timer = max(0.0, self._weapon_cooldown_timer - delta_seconds)
+        effects = self.run_upgrades.effects_snapshot()
+        self._apply_player_upgrade_effects(effects)
         self.player.update(delta_seconds, movement_input, self.bounds)
         player_center = pygame.Vector2(self.player.rect.center)
         
@@ -146,7 +172,8 @@ class GameSession:
         
         # Check projectile-hazard collisions
         kills = self._check_projectile_collisions()
-        self.score_seconds += kills * self.KILL_BONUS_POINTS
+        kill_points_multiplier = self._score_multiplier_from_effects(effects)
+        self.score_seconds += (kills * self.KILL_BONUS_POINTS) * kill_points_multiplier
         
         # Update confetti particles
         self.confetti.update(delta_seconds)
@@ -223,7 +250,9 @@ class GameSession:
             spawn_tier_config = get_level_config(spawn_tier)
             hazard = self.spawn_controller.create_hazard_for_spawn_with_chances(
                 tier=spawn_tier,
-                base_speed=spawn_tier_config.enemy_speed * self.difficulty_multiplier,
+                base_speed=self._spawn_speed_with_upgrade_modifiers(
+                    spawn_tier_config.enemy_speed * self.difficulty_multiplier
+                ),
                 flavor_tag=spawn_tier_config.flavor.name,
                 tracking_chance=spawn_tier_config.hazard_mix.tracking_hazard_chance,
                 boss_override_active=self._boss_active,
@@ -285,7 +314,9 @@ class GameSession:
                 spawn_tier_config = get_level_config(spawn_tier)
                 hazard = self.spawn_controller.create_hazard_for_spawn_with_chances(
                     tier=spawn_tier,
-                    base_speed=spawn_tier_config.enemy_speed * self.difficulty_multiplier,
+                    base_speed=self._spawn_speed_with_upgrade_modifiers(
+                        spawn_tier_config.enemy_speed * self.difficulty_multiplier
+                    ),
                     flavor_tag=spawn_tier_config.flavor.name,
                     tracking_chance=0.0,
                     boss_override_active=True,
@@ -305,15 +336,58 @@ class GameSession:
 
     def fire_projectile(self, direction: pygame.Vector2) -> None:
         """Fire a projectile in the given direction from the player center."""
+        if self._weapon_cooldown_timer > 0.0:
+            return
+        if len(self.projectiles) >= self.max_active_projectiles:
+            return
         player_center = pygame.Vector2(self.player.rect.center)
+        effects = self.run_upgrades.effects_snapshot()
+        projectile_speed = self.BASE_PROJECTILE_SPEED * (1.0 + effects.get("projectile_speed_mult", 0.0))
+        projectile_damage = 1 + int(effects.get("projectile_damage", 0.0))
+        fire_rate_mult = max(0.0, effects.get("fire_rate_mult", 0.0))
+        self._weapon_cooldown_timer = max(0.06, self.BASE_FIRE_COOLDOWN * (1.0 - fire_rate_mult))
         projectile = Projectile(
             position=player_center,
-            direction=direction,
-            speed=500.0,
+            direction=pygame.Vector2(direction),
+            speed=projectile_speed,
             lifetime=3.0,
             size=8,
+            damage=projectile_damage,
         )
         self.projectiles.append(projectile)
+
+    @property
+    def pending_run_level_ups(self) -> int:
+        return self.run_progression.pending_level_ups
+
+    @property
+    def run_level(self) -> int:
+        return self.run_progression.run_level
+
+    def run_progress_snapshot(self) -> dict[str, int | float]:
+        return self.run_progression.snapshot()
+
+    def current_upgrade_choices(self) -> list[UpgradeDefinition]:
+        return list(self._current_upgrade_choices)
+
+    def ensure_upgrade_choices(self) -> list[UpgradeDefinition]:
+        if not self._current_upgrade_choices:
+            self._current_upgrade_choices = self.run_upgrades.generate_choices(count=3)
+            if not self._current_upgrade_choices and self.run_progression.pending_level_ups > 0:
+                self.run_progression.consume_pending_level_up()
+        return list(self._current_upgrade_choices)
+
+    def apply_upgrade_choice_by_index(self, index: int) -> bool:
+        if not self._current_upgrade_choices:
+            return False
+        if index < 0 or index >= len(self._current_upgrade_choices):
+            return False
+        chosen = self._current_upgrade_choices[index]
+        if not self.run_upgrades.apply_choice(chosen.id):
+            return False
+        self.run_progression.consume_pending_level_up()
+        self._current_upgrade_choices = []
+        return True
 
     def _check_projectile_collisions(self) -> int:
         """Check projectile-hazard collisions and remove entities on hit.
@@ -324,6 +398,7 @@ class GameSession:
         hazards_to_remove = []
         projectiles_to_remove = []
         hazard_kill_positions = []
+        hazard_kill_kinds: list[str] = []
         pinata_split_requests: list[dict[str, object]] = []
         
         for proj_idx, projectile in enumerate(self.projectiles):
@@ -334,15 +409,21 @@ class GameSession:
                     
                     # Handle boss health
                     if isinstance(hazard, BossBalloon):
-                        hit_registered, defeated = hazard.apply_hit()
-                        if hit_registered:
-                            self._pending_balloon_hit_sfx_count += 1
-                            self._pending_boss_hit_sfx_count += 1
+                        hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                            hazard,
+                            projectile_damage=int(getattr(projectile, "damage", 1)),
+                        )
+                        if hit_count > 0:
+                            self._pending_balloon_hit_sfx_count += hit_count
+                            self._pending_boss_hit_sfx_count += hit_count
                         if defeated:
                             # Boss defeated - award bonus and enhanced feedback
                             hazards_to_remove.append(hazard_idx)
                             hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
-                            self.score_seconds += self.BOSS_BONUS_POINTS
+                            self.score_seconds += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
+                                self.run_upgrades.effects_snapshot()
+                            )
+                            hazard_kill_kinds.append("boss_balloon")
                             self._boss_active = False
                             self._boss_defeated = True
                             self._boss_defeated_level = self.current_level
@@ -355,13 +436,17 @@ class GameSession:
                             # Enhanced confetti burst for boss defeat
                             self._spawn_enhanced_confetti(pygame.Vector2(hazard.rect.center))
                     elif isinstance(hazard, PinataEnemy):
-                        hit_registered, defeated = hazard.apply_hit()
-                        if hit_registered:
-                            self._pending_balloon_hit_sfx_count += 1
+                        hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                            hazard,
+                            projectile_damage=int(getattr(projectile, "damage", 1)),
+                        )
+                        if hit_count > 0:
+                            self._pending_balloon_hit_sfx_count += hit_count
                         if defeated and hazard_idx not in hazards_to_remove:
                             hazards_to_remove.append(hazard_idx)
                             center = pygame.Vector2(hazard.rect.center)
                             hazard_kill_positions.append(center)
+                            hazard_kill_kinds.append("pinata")
                             self._pending_balloon_pop_sfx_count += 1
                             profile = hazard.spawn_profile or {}
                             break_confetti_count = int(profile.get("break_confetti_count", 14))
@@ -386,6 +471,7 @@ class GameSession:
                             hazards_to_remove.append(hazard_idx)
                             center = pygame.Vector2(hazard.rect.center)
                             hazard_kill_positions.append(center)
+                            hazard_kill_kinds.append("confetti_sprayer")
                             self._pending_balloon_pop_sfx_count += 1
                             self._pending_sprayer_destroy_sfx_count += 1
                             self._spawn_sprayer_destroy_confetti(center)
@@ -395,6 +481,8 @@ class GameSession:
                         if hazard_idx not in hazards_to_remove:
                             hazards_to_remove.append(hazard_idx)
                             hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                            kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+                            hazard_kill_kinds.append(kind)
                             self._pending_balloon_pop_sfx_count += 1
         
         # Remove in reverse order to maintain indices
@@ -406,22 +494,52 @@ class GameSession:
         
         # Spawn confetti at kill locations
         for center in hazard_kill_positions:
-            self.confetti.spawn_burst(center, count=8)
+            self.confetti.spawn_burst(center, count=8 + self._confetti_bonus_count())
 
         if pinata_split_requests:
             self._spawn_pinata_minis(pinata_split_requests)
+        if hazard_kill_kinds:
+            xp_gained = sum(self.XP_REWARDS.get(kind, 10) for kind in hazard_kill_kinds)
+            self.run_progression.gain_xp(xp_gained)
 
         return len(hazards_to_remove)
 
+    def _apply_damage_to_multi_hit_enemy(self, hazard: object, *, projectile_damage: int) -> tuple[int, bool]:
+        hits_registered = 0
+        defeated = False
+        for idx in range(max(1, int(projectile_damage))):
+            if idx > 0 and hasattr(hazard, "hit_invuln_timer"):
+                setattr(hazard, "hit_invuln_timer", 0.0)
+            hit_registered, defeated = hazard.apply_hit()  # type: ignore[attr-defined]
+            if hit_registered:
+                hits_registered += 1
+            if defeated:
+                break
+        return hits_registered, defeated
+
+    def _apply_player_upgrade_effects(self, effects: dict[str, float]) -> None:
+        move_speed_mult = max(0.0, effects.get("move_speed_mult", 0.0))
+        self.player.speed = self.BASE_PLAYER_SPEED * (1.0 + move_speed_mult)
+        projectile_cap_bonus = max(0, int(effects.get("projectile_cap_bonus", 0.0)))
+        self.max_active_projectiles = min(5, 3 + projectile_cap_bonus)
+
+    def _spawn_speed_with_upgrade_modifiers(self, base_speed: float) -> float:
+        effects = self.run_upgrades.effects_snapshot()
+        enemy_speed_reduction = max(0.0, min(0.45, effects.get("enemy_speed_reduction", 0.0)))
+        return base_speed * (1.0 - enemy_speed_reduction)
+
+    def _score_multiplier_from_effects(self, effects: dict[str, float]) -> float:
+        return 1.0 + max(0.0, effects.get("score_mult", 0.0))
+
     def _spawn_enhanced_confetti(self, center: pygame.Vector2) -> None:
         """Spawn an enhanced confetti burst for boss defeats."""
-        self.confetti.spawn_burst(center, count=16)
+        self.confetti.spawn_burst(center, count=16 + self._confetti_bonus_count())
 
     def _spawn_pinata_break_confetti(self, center: pygame.Vector2, *, burst_count: int = 14) -> None:
         """Spawn a stronger confetti burst for pinata breaks."""
         self.confetti.spawn_burst(
             center,
-            count=max(10, int(burst_count)),
+            count=max(10, int(burst_count) + self._confetti_bonus_count()),
             speed_min=180.0,
             speed_max=360.0,
             lifetime_min=0.7,
@@ -432,12 +550,16 @@ class GameSession:
         """Spawn a distinct medium burst on sprayer destruction."""
         self.confetti.spawn_burst(
             center,
-            count=11,
+            count=11 + self._confetti_bonus_count(),
             speed_min=160.0,
             speed_max=300.0,
             lifetime_min=0.5,
             lifetime_max=0.85,
         )
+
+    def _confetti_bonus_count(self) -> int:
+        effects = self.run_upgrades.effects_snapshot()
+        return max(0, int(effects.get("confetti_bonus", 0.0)))
 
     def _spawn_pinata_minis(self, requests: list[dict[str, object]]) -> None:
         """Spawn lightweight mini-balloons from defeated pinatas."""
@@ -598,7 +720,7 @@ class GameSession:
         size = 40
         spawn_x = (self.bounds.width - size) / 2
         spawn_y = (self.bounds.height - size) / 2
-        return Player(spawn_x, spawn_y, size=size)
+        return Player(spawn_x, spawn_y, size=size, speed=self.BASE_PLAYER_SPEED)
 
     def _create_initial_hazards(self, player: Player) -> list[Hazard]:
         spawn_speed = self._spawn_speed()
@@ -606,7 +728,7 @@ class GameSession:
         hazards = [
             self.spawn_controller.create_hazard_for_spawn_with_chances(
                 tier=self.spawn_controller.select_spawn_tier(level_config.level),
-                base_speed=spawn_speed,
+                base_speed=self._spawn_speed_with_upgrade_modifiers(spawn_speed),
                 flavor_tag=level_config.flavor.name,
                 tracking_chance=level_config.hazard_mix.tracking_hazard_chance,
                 boss_override_active=False,

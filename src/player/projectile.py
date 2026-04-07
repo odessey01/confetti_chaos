@@ -15,6 +15,7 @@ class Projectile:
         speed: float = 500.0,
         lifetime: float = 3.0,
         size: int = 8,
+        damage: int = 1,
     ) -> None:
         """Initialize a projectile.
 
@@ -31,6 +32,7 @@ class Projectile:
         self.lifetime = lifetime
         self.max_lifetime = lifetime
         self.size = size
+        self.damage = max(1, int(damage))
         self.color = (255, 255, 150)
         self.accent_color = (255, 200, 50)
 
