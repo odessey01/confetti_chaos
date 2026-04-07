@@ -20,8 +20,27 @@ class UiRenderer:
         score_surface = self._score_font.render(f"Score: {score_value}", True, self._score_color)
         surface.blit(score_surface, (20, 20))
 
-    def draw_state_text(self, surface: pygame.Surface, text: str) -> None:
+    def draw_level(self, surface: pygame.Surface, level: int) -> None:
+        level_surface = self._score_font.render(f"Level: {level}", True, self._score_color)
+        level_rect = level_surface.get_rect(topright=(surface.get_width() - 20, 20))
+        surface.blit(level_surface, level_rect)
+
+    def draw_boss_victory(self, surface: pygame.Surface, bonus: int) -> None:
+        title_surface = self._title_font.render("BOSS DEFEATED!", True, (255, 215, 120))
+        title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 40))
+        surface.blit(title_surface, title_rect)
+
+        bonus_surface = self._state_font.render(f"+{bonus} Bonus", True, self._score_color)
+        bonus_rect = bonus_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 30))
+        surface.blit(bonus_surface, bonus_rect)
+
+    def draw_state_text(self, surface: pygame.Surface, text: str, alpha: float = 1.0) -> None:
         text_surface = self._state_font.render(text, True, self._state_color)
+        
+        # Apply alpha blending if alpha < 1.0
+        if alpha < 1.0:
+            text_surface.set_alpha(max(0, int(255 * alpha)))
+        
         text_rect = text_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2))
         surface.blit(text_surface, text_rect)
 

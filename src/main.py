@@ -61,6 +61,7 @@ def main() -> int:
     running = True
     while running:
         delta_seconds = clock.tick(TARGET_FPS) / 1000.0
+        attack = False
         for event in pygame.event.get():
             input_controller.handle_event(event)
             if event.type == pygame.QUIT:
@@ -79,6 +80,8 @@ def main() -> int:
                 elif state == GameState.PLAYING and input_controller.is_pause_toggle(event):
                     state = transition_state(state, GameState.PAUSED)
                     visual_feedback.trigger_state_transition()
+                elif state == GameState.PLAYING and input_controller.is_attack(event):
+                    attack = True
                 elif state == GameState.PAUSED and input_controller.is_pause_toggle(event):
                     state = transition_state(state, GameState.PLAYING)
                     visual_feedback.trigger_state_transition()
@@ -90,7 +93,7 @@ def main() -> int:
 
         if state == GameState.PLAYING:
             movement_input = input_controller.movement_vector()
-            collided = session.update_playing(delta_seconds, movement_input)
+            collided = session.update_playing(delta_seconds, movement_input, attack)
             if collided:
                 audio.play_collision()
                 visual_feedback.trigger_collision_feedback()
@@ -99,6 +102,10 @@ def main() -> int:
                     save_high_score(high_score)
                 state = transition_state(state, GameState.GAME_OVER)
                 visual_feedback.trigger_state_transition()
+
+            if session.boss_victory_sound_pending:
+                audio.play_boss_victory()
+                session.clear_boss_victory_sound_pending()
 
             for center in session.consume_spawn_pulse_centers():
                 visual_feedback.add_spawn_pulse(center)
@@ -109,13 +116,20 @@ def main() -> int:
         world_surface.fill((20, 20, 30))
 
         ui.draw_score(world_surface, session.score_value)
+        ui.draw_level(world_surface, session.current_level)
 
         if state == GameState.MENU:
             ui.draw_menu(world_surface, WINDOW_TITLE, high_score)
         elif state == GameState.PLAYING:
-            label = "PLAYING: Move (WASD/Arrows or Left Stick)"
             session.draw_playing(world_surface)
-            ui.draw_state_text(world_surface, label)
+            if session.boss_celebration_active:
+                ui.draw_boss_victory(world_surface, session.boss_defeat_bonus)
+            else:
+                label = "PLAYING: Move (WASD/Arrows or Left Stick)"
+                # Fade out instructions after 3 seconds, with fade starting at 2.5 seconds
+                if session.elapsed_time < 3.0:
+                    fade_alpha = max(0.0, (3.0 - session.elapsed_time) / 0.5)
+                    ui.draw_state_text(world_surface, label, alpha=fade_alpha)
         elif state == GameState.PAUSED:
             session.draw_playing(world_surface)
             ui.draw_paused(world_surface, runtime_settings.audio_enabled)

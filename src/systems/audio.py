@@ -15,6 +15,7 @@ class AudioManager:
         self._user_enabled = True
         self._start_sound: pygame.mixer.Sound | None = None
         self._collision_sound: pygame.mixer.Sound | None = None
+        self._boss_defeat_sound: pygame.mixer.Sound | None = None
         self._warning_printed = False
         self._initialize()
 
@@ -29,12 +30,16 @@ class AudioManager:
 
         self._start_sound = self._load_sound(asset_path("audio", "start.wav"))
         self._collision_sound = self._load_sound(asset_path("audio", "collision.wav"))
+        self._boss_defeat_sound = self._load_sound(asset_path("audio", "boss_defeat.wav"), warn=False)
+        if self._boss_defeat_sound is None:
+            self._boss_defeat_sound = self._start_sound
 
-    def _load_sound(self, path: Path) -> pygame.mixer.Sound | None:
+    def _load_sound(self, path: Path, warn: bool = True) -> pygame.mixer.Sound | None:
         try:
             return pygame.mixer.Sound(str(path))
         except (pygame.error, OSError):
-            self._warn_once(f"Audio disabled for missing/unreadable sound: {path.name}")
+            if warn:
+                self._warn_once(f"Audio disabled for missing/unreadable sound: {path.name}")
             return None
 
     def play_start_or_restart(self) -> None:
@@ -42,6 +47,9 @@ class AudioManager:
 
     def play_collision(self) -> None:
         self._play(self._collision_sound)
+
+    def play_boss_victory(self) -> None:
+        self._play(self._boss_defeat_sound)
 
     def set_enabled(self, enabled: bool) -> None:
         self._user_enabled = enabled
