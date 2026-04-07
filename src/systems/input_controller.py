@@ -68,6 +68,15 @@ class InputController:
             and event.button in (7, 6)
         )
 
+    def is_attack(self, event: pygame.event.Event) -> bool:
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key == pygame.K_SPACE
+        ) or (
+            event.type == pygame.JOYBUTTONDOWN
+            and event.button in (0, 1)
+        )
+
     def _refresh_joystick(self) -> None:
         if pygame.joystick.get_count() > 0:
             joystick = pygame.joystick.Joystick(0)

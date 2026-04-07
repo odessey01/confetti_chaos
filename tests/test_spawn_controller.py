@@ -15,12 +15,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from systems.spawn_controller import SpawnController  # noqa: E402
-from enemies import Hazard, TrackingHazard  # noqa: E402
+from enemies import BalloonEnemy, TrackingHazard  # noqa: E402
 
 
 class DeterministicRng:
-    def __init__(self) -> None:
-        self._random_values = [0.1, 0.9]
+    def __init__(self, random_values: list[float] | None = None) -> None:
+        self._random_values = random_values if random_values is not None else [0.1, 0.9]
         self._random_idx = 0
 
     def random(self) -> float:
@@ -36,14 +36,21 @@ class DeterministicRng:
 
 
 class SpawnControllerValidationTests(unittest.TestCase):
-    def test_create_hazard_produces_distinct_types(self) -> None:
+    def test_create_hazard_produces_balloon_variants(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
-        controller = SpawnController(bounds, tracking_spawn_chance=0.5, rng=DeterministicRng())
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.3,
+            balloon_spawn_chance=0.4,
+            rng=DeterministicRng([0.1, 0.5, 0.9]),
+        )
         first = controller.create_hazard(speed=220.0)
         second = controller.create_hazard(speed=220.0)
+        third = controller.create_hazard(speed=220.0)
 
         self.assertIsInstance(first, TrackingHazard)
-        self.assertIsInstance(second, Hazard)
+        self.assertIsInstance(second, BalloonEnemy)
+        self.assertIsInstance(third, BalloonEnemy)
 
     def test_spawn_positions_respect_safe_distance(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
@@ -51,10 +58,10 @@ class SpawnControllerValidationTests(unittest.TestCase):
         player_center = pygame.Vector2(640, 360)
 
         for _ in range(50):
-            spawn = controller.sample_spawn_position(player_center, hazard_size=34)
+            spawn = controller.sample_spawn_position(player_center, hazard_size=68)
             self.assertGreaterEqual(
                 spawn.distance_to(player_center),
-                220.0 + (34 / 2),
+                220.0 + (68 / 2),
             )
 
     def test_spawn_timing_scales_with_difficulty_and_is_bounded(self) -> None:

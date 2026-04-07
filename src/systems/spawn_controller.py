@@ -7,7 +7,7 @@ from typing import Protocol
 
 import pygame
 
-from enemies import Hazard, TrackingHazard
+from enemies import BalloonEnemy, BossBalloon, Hazard, TrackingHazard
 
 
 class RandomLike(Protocol):
@@ -32,6 +32,7 @@ class SpawnController:
         min_spawn_interval: float = 0.75,
         safe_spawn_distance: float = 220.0,
         tracking_spawn_chance: float = 0.35,
+        balloon_spawn_chance: float = 0.35,
         rng: RandomLike | None = None,
     ) -> None:
         self.bounds = bounds
@@ -41,20 +42,30 @@ class SpawnController:
         self.min_spawn_interval = min_spawn_interval
         self.safe_spawn_distance = safe_spawn_distance
         self.tracking_spawn_chance = tracking_spawn_chance
+        self.balloon_spawn_chance = balloon_spawn_chance
         self._rng = rng if rng is not None else random.Random()
         self._spawn_timer = 0.0
 
     def reset(self) -> None:
         self._spawn_timer = 0.0
 
+    def set_tracking_chance(self, chance: float) -> None:
+        """Set the probability of spawning a tracking hazard."""
+        self.tracking_spawn_chance = max(0.0, min(chance, 1.0))
+
+    def set_balloon_chance(self, chance: float) -> None:
+        """Set the probability of spawning a balloon enemy."""
+        self.balloon_spawn_chance = max(0.0, min(chance, 1.0))
+
     def spawn_count_for_frame(
         self,
         delta_seconds: float,
         difficulty_multiplier: float,
         active_hazard_count: int,
+        spawn_rate_multiplier: float = 1.0,
     ) -> int:
         self._spawn_timer += delta_seconds
-        interval = self.current_spawn_interval(difficulty_multiplier)
+        interval = self.current_spawn_interval(difficulty_multiplier, spawn_rate_multiplier)
 
         spawn_count = 0
         while (
@@ -65,8 +76,9 @@ class SpawnController:
             spawn_count += 1
         return spawn_count
 
-    def current_spawn_interval(self, difficulty_multiplier: float) -> float:
-        interval = self.base_spawn_interval / max(difficulty_multiplier, 1.0)
+    def current_spawn_interval(self, difficulty_multiplier: float, spawn_rate_multiplier: float = 1.0) -> float:
+        combined_multiplier = max(difficulty_multiplier * spawn_rate_multiplier, 1.0)
+        interval = self.base_spawn_interval / combined_multiplier
         return max(self.min_spawn_interval, interval)
 
     def configure_hazard(
@@ -78,9 +90,14 @@ class SpawnController:
         hazard.launch_toward_target(spawn, player_center)
 
     def create_hazard(self, speed: float) -> Hazard:
-        if self._rng.random() < self.tracking_spawn_chance:
-            return TrackingHazard(speed=speed * 0.82)
-        return Hazard(speed=speed)
+        roll = self._rng.random()
+        if roll < self.tracking_spawn_chance:
+            return TrackingHazard(speed=speed * 0.7)  # Reduced from 0.82
+        return BalloonEnemy(speed=speed * 0.75)
+
+    def create_boss_hazard(self, speed: float) -> BossBalloon:
+        """Create a boss balloon enemy."""
+        return BossBalloon(speed=speed * 0.5)  # Boss moves slower
 
     def sample_spawn_position(
         self,
