@@ -39,6 +39,7 @@ PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Quit to Menu")
 class GameState(str, Enum):
     MENU = "MENU"
     PLAYING = "PLAYING"
+    LEVEL_UP = "LEVEL_UP"
     PAUSED = "PAUSED"
     GAME_OVER = "GAME_OVER"
 
@@ -96,12 +97,18 @@ def should_update_playing(state: GameState) -> bool:
     return state == GameState.PLAYING
 
 
+def next_choice_index(current_index: int, direction: int, option_count: int) -> int:
+    if option_count <= 0:
+        return 0
+    return (current_index + direction) % option_count
+
+
 def desired_music_track_for_state(state: GameState, *, boss_active: bool) -> str | None:
     if state == GameState.MENU:
         return "menu"
     if state == GameState.PLAYING:
         return "boss" if boss_active else "gameplay"
-    if state in (GameState.PAUSED, GameState.GAME_OVER):
+    if state in (GameState.PAUSED, GameState.GAME_OVER, GameState.LEVEL_UP):
         return "gameplay"
     return None
 
@@ -230,6 +237,7 @@ def main() -> int:
         audio.play_ambient(ambient_track)
     start_menu_index = 0
     pause_menu_index = 0
+    level_up_choice_index = 0
     running = True
     while running:
         delta_seconds = clock.tick(TARGET_FPS) / 1000.0
@@ -297,6 +305,22 @@ def main() -> int:
                         visual_feedback=visual_feedback,
                     )
                     audio.play_sfx("ui_resume")
+                elif state == GameState.LEVEL_UP and input_controller.is_menu_up(event):
+                    option_count = len(session.current_upgrade_choices())
+                    level_up_choice_index = next_choice_index(level_up_choice_index, -1, option_count)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.LEVEL_UP and input_controller.is_menu_down(event):
+                    option_count = len(session.current_upgrade_choices())
+                    level_up_choice_index = next_choice_index(level_up_choice_index, 1, option_count)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.LEVEL_UP and input_controller.is_menu_confirm(event):
+                    if session.apply_upgrade_choice_by_index(level_up_choice_index):
+                        audio.play_sfx("ui_confirm")
+                        if session.pending_run_level_ups > 0:
+                            session.ensure_upgrade_choices()
+                            level_up_choice_index = 0
+                        else:
+                            state = transition_state(state, GameState.PLAYING)
                 elif state == GameState.GAME_OVER and input_controller.is_restart(event):
                     audio.play_sfx("ui_confirm")
                     state = transition_state(state, GameState.PLAYING)
@@ -353,14 +377,26 @@ def main() -> int:
                 audio.play_sfx("milestone_clear")
             if audio_cues["confetti_celebration"]:
                 audio.play_sfx("confetti_celebration")
+            for _ in range(min(3, int(audio_cues["sprayer_charge_count"]))):
+                audio.play_sfx("ui_nav")
+            for _ in range(min(3, int(audio_cues["sprayer_burst_count"]))):
+                audio.play_sfx("balloon_pop")
+            for _ in range(min(3, int(audio_cues["sprayer_destroy_count"]))):
+                audio.play_sfx("balloon_pop")
 
             for center in session.consume_spawn_pulse_centers():
                 visual_feedback.add_spawn_pulse(center)
 
+            if session.pending_run_level_ups > 0:
+                choices = session.ensure_upgrade_choices()
+                if choices:
+                    level_up_choice_index = 0
+                    state = transition_state(state, GameState.LEVEL_UP)
+
         visual_feedback.update(delta_seconds)
 
         world_surface = pygame.Surface(screen.get_size())
-        if state in (GameState.PLAYING, GameState.PAUSED):
+        if state in (GameState.PLAYING, GameState.PAUSED, GameState.LEVEL_UP):
             flavor_name = session.current_level_config.flavor.name
             player_center = session.player.rect.center
         else:
@@ -371,6 +407,13 @@ def main() -> int:
 
         ui.draw_score(world_surface, session.score_value)
         ui.draw_level(world_surface, session.current_level)
+        run_snapshot = session.run_progress_snapshot()
+        ui.draw_run_progress(
+            world_surface,
+            run_level=int(run_snapshot["run_level"]),
+            current_xp=int(run_snapshot["xp"]),
+            xp_to_next=int(run_snapshot["xp_to_next_level"]),
+        )
 
         if state == GameState.MENU:
             ui.draw_menu(
@@ -399,6 +442,14 @@ def main() -> int:
                 runtime_settings.music_enabled,
                 PAUSE_MENU_OPTIONS,
                 pause_menu_index,
+            )
+        elif state == GameState.LEVEL_UP:
+            session.draw_playing(world_surface)
+            ui.draw_level_up_overlay(
+                world_surface,
+                run_level=session.run_level,
+                options=session.current_upgrade_choices(),
+                selected_index=level_up_choice_index,
             )
         else:
             label = (
