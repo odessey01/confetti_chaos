@@ -9,7 +9,7 @@ from typing import Protocol
 
 import pygame
 
-from enemies import BalloonEnemy, BossBalloon, Hazard, TrackingHazard
+from enemies import BalloonEnemy, BossBalloon, ConfettiSprayer, Hazard, PinataEnemy, TrackingHazard
 
 
 class RandomLike(Protocol):
@@ -31,9 +31,99 @@ class EnemySpawnProfile:
     movement_profile: str
     flavor_tag: str
     enemy_kind: str
+    boss_variant_id: str | None = None
+    break_confetti_count: int | None = None
+    mini_spawn_count: int | None = None
+    spray_cooldown: float | None = None
+    spray_angle: float | None = None
+    spray_projectile_count: int | None = None
+    spray_projectile_speed: float | None = None
+
+
+@dataclass(frozen=True)
+class PinataTierVariant:
+    variant_id: str
+    speed_multiplier: float
+    health: int
+    break_confetti_count: int
+    mini_spawn_count: int
+
+
+@dataclass(frozen=True)
+class SprayerFlavorProfile:
+    cooldown: float
+    spray_angle: float
+    projectile_count: int
+    projectile_speed: float
 
 
 class SpawnController:
+    MIN_PINATA_CHANCE = 0.04
+    MAX_PINATA_CHANCE = 0.26
+    PINATA_RAMP_START_TIER = 3
+    PINATA_RAMP_FULL_TIER = 12
+    BOSS_PINATA_CHANCE_CAP = 0.08
+    MIN_SPRAYER_CHANCE = 0.035
+    MAX_SPRAYER_CHANCE = 0.22
+    SPRAYER_RAMP_START_TIER = 2
+    SPRAYER_RAMP_FULL_TIER = 10
+    BOSS_SPRAYER_CHANCE_CAP = 0.08
+    SPRAYER_FLAVOR_MULTIPLIERS: dict[str, float] = {
+        "STANDARD": 1.0,
+        "SWARM": 0.75,
+        "HUNTERS": 1.15,
+        "STORM": 1.05,
+    }
+    SPRAYER_FLAVOR_ATTACK_PROFILES: dict[str, SprayerFlavorProfile] = {
+        "STANDARD": SprayerFlavorProfile(
+            cooldown=2.0,
+            spray_angle=55.0,
+            projectile_count=5,
+            projectile_speed=320.0,
+        ),
+        "SWARM": SprayerFlavorProfile(
+            cooldown=2.35,
+            spray_angle=50.0,
+            projectile_count=4,
+            projectile_speed=300.0,
+        ),
+        "HUNTERS": SprayerFlavorProfile(
+            cooldown=1.75,
+            spray_angle=36.0,
+            projectile_count=5,
+            projectile_speed=345.0,
+        ),
+        "STORM": SprayerFlavorProfile(
+            cooldown=1.55,
+            spray_angle=62.0,
+            projectile_count=6,
+            projectile_speed=335.0,
+        ),
+    }
+    PINATA_TIER_VARIANTS: tuple[PinataTierVariant, ...] = (
+        PinataTierVariant(
+            variant_id="pinata_basic",
+            speed_multiplier=0.58,
+            health=3,
+            break_confetti_count=14,
+            mini_spawn_count=0,
+        ),
+        PinataTierVariant(
+            variant_id="pinata_reinforced",
+            speed_multiplier=0.60,
+            health=4,
+            break_confetti_count=18,
+            mini_spawn_count=1,
+        ),
+        PinataTierVariant(
+            variant_id="pinata_showstopper",
+            speed_multiplier=0.62,
+            health=5,
+            break_confetti_count=22,
+            mini_spawn_count=2,
+        ),
+    )
+
     def __init__(
         self,
         bounds: pygame.Rect,
@@ -129,6 +219,7 @@ class SpawnController:
             tier=1,
             base_speed=speed,
             flavor_tag="STANDARD",
+            boss_variant_id="classic",
         )
 
     def create_hazard_for_spawn(self, *, tier: int, base_speed: float, flavor_tag: str) -> Hazard:
@@ -146,9 +237,25 @@ class SpawnController:
         base_speed: float,
         flavor_tag: str,
         tracking_chance: float,
+        boss_override_active: bool = False,
     ) -> Hazard:
+        tracking_share, balloon_share, pinata_share = self._resolve_hazard_mix_for_spawn(
+            tier=tier,
+            tracking_chance=tracking_chance,
+            boss_override_active=boss_override_active,
+        )
+        sprayer_target = self._sprayer_target_chance_for_spawn(
+            tier=tier,
+            flavor_tag=flavor_tag,
+            boss_override_active=boss_override_active,
+        )
+        sprayer_share = min(balloon_share, max(0.0, sprayer_target))
+        balloon_share -= sprayer_share
         roll = self._rng.random()
-        if roll < max(0.0, min(tracking_chance, 1.0)):
+        tracking_threshold = tracking_share
+        sprayer_threshold = tracking_threshold + sprayer_share
+        balloon_threshold = sprayer_threshold + balloon_share
+        if roll < tracking_threshold:
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.7,
@@ -158,7 +265,28 @@ class SpawnController:
                 enemy_kind="tracking",
             )
             hazard = TrackingHazard(speed=profile.speed)
-        else:
+        elif roll < sprayer_threshold:
+            sprayer_attack = self._sprayer_attack_profile_for_flavor(flavor_tag)
+            profile = EnemySpawnProfile(
+                tier=tier,
+                speed=base_speed * 0.68,
+                health=1,
+                movement_profile="sprayer_glide",
+                flavor_tag=flavor_tag,
+                enemy_kind="confetti_sprayer",
+                spray_cooldown=sprayer_attack.cooldown,
+                spray_angle=sprayer_attack.spray_angle,
+                spray_projectile_count=sprayer_attack.projectile_count,
+                spray_projectile_speed=sprayer_attack.projectile_speed,
+            )
+            hazard = ConfettiSprayer(speed=profile.speed)
+            hazard.configure_attack_profile(
+                cooldown=sprayer_attack.cooldown,
+                spray_angle=sprayer_attack.spray_angle,
+                projectile_count=sprayer_attack.projectile_count,
+                projectile_speed=sprayer_attack.projectile_speed,
+            )
+        elif roll < balloon_threshold:
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.75,
@@ -168,19 +296,133 @@ class SpawnController:
                 enemy_kind="balloon",
             )
             hazard = BalloonEnemy(speed=profile.speed)
+        else:
+            pinata_variant = self._pinata_variant_for_tier(tier)
+            profile = EnemySpawnProfile(
+                tier=tier,
+                speed=base_speed * pinata_variant.speed_multiplier,
+                health=pinata_variant.health,
+                movement_profile="pinata_heavy_drift",
+                flavor_tag=flavor_tag,
+                enemy_kind="pinata",
+                break_confetti_count=pinata_variant.break_confetti_count,
+                mini_spawn_count=pinata_variant.mini_spawn_count,
+            )
+            hazard = PinataEnemy(speed=profile.speed, max_health=profile.health, damage_per_hit=1)
         hazard.apply_spawn_profile(self._profile_to_dict(profile))
         return hazard
 
-    def create_boss_hazard_for_spawn(self, *, tier: int, base_speed: float, flavor_tag: str) -> BossBalloon:
+    def _pinata_variant_for_tier(self, tier: int) -> PinataTierVariant:
+        clamped_tier = max(1, int(tier))
+        if clamped_tier >= 9:
+            return self.PINATA_TIER_VARIANTS[2]
+        if clamped_tier >= 5:
+            return self.PINATA_TIER_VARIANTS[1]
+        return self.PINATA_TIER_VARIANTS[0]
+
+    def _resolve_hazard_mix_for_spawn(
+        self,
+        *,
+        tier: int,
+        tracking_chance: float,
+        boss_override_active: bool,
+    ) -> tuple[float, float, float]:
+        tracking_base = max(0.0, min(tracking_chance, 1.0))
+        balloon_base = max(0.0, min(self.balloon_spawn_chance, 1.0))
+        non_pinata_total = tracking_base + balloon_base
+
+        pinata_target = self._pinata_target_chance_for_tier(
+            tier=tier,
+            boss_override_active=boss_override_active,
+        )
+        pinata_share = max(0.0, min(pinata_target, 1.0))
+        remaining_share = 1.0 - pinata_share
+
+        if non_pinata_total <= 0.0:
+            return 0.0, remaining_share, pinata_share
+
+        scale = remaining_share / non_pinata_total
+        tracking_share = tracking_base * scale
+        balloon_share = balloon_base * scale
+        return tracking_share, balloon_share, pinata_share
+
+    def _pinata_target_chance_for_tier(
+        self,
+        *,
+        tier: int,
+        boss_override_active: bool,
+    ) -> float:
+        clamped_tier = max(1, int(tier))
+        if clamped_tier <= self.PINATA_RAMP_START_TIER:
+            chance = self.MIN_PINATA_CHANCE
+        else:
+            tier_span = max(1, self.PINATA_RAMP_FULL_TIER - self.PINATA_RAMP_START_TIER)
+            progress = min(
+                max((clamped_tier - self.PINATA_RAMP_START_TIER) / tier_span, 0.0),
+                1.0,
+            )
+            chance = self.MIN_PINATA_CHANCE + (
+                (self.MAX_PINATA_CHANCE - self.MIN_PINATA_CHANCE) * progress
+            )
+        if boss_override_active:
+            return min(chance, self.BOSS_PINATA_CHANCE_CAP)
+        return chance
+
+    def _sprayer_target_chance_for_spawn(
+        self,
+        *,
+        tier: int,
+        flavor_tag: str,
+        boss_override_active: bool,
+    ) -> float:
+        clamped_tier = max(1, int(tier))
+        if clamped_tier <= self.SPRAYER_RAMP_START_TIER:
+            base_chance = self.MIN_SPRAYER_CHANCE
+        else:
+            tier_span = max(1, self.SPRAYER_RAMP_FULL_TIER - self.SPRAYER_RAMP_START_TIER)
+            progress = min(
+                max((clamped_tier - self.SPRAYER_RAMP_START_TIER) / tier_span, 0.0),
+                1.0,
+            )
+            base_chance = self.MIN_SPRAYER_CHANCE + (
+                (self.MAX_SPRAYER_CHANCE - self.MIN_SPRAYER_CHANCE) * progress
+            )
+        flavor_multiplier = self.SPRAYER_FLAVOR_MULTIPLIERS.get(str(flavor_tag), 1.0)
+        chance = base_chance * max(0.0, float(flavor_multiplier))
+        if boss_override_active:
+            return min(chance, self.BOSS_SPRAYER_CHANCE_CAP)
+        return chance
+
+    def _sprayer_attack_profile_for_flavor(self, flavor_tag: str) -> SprayerFlavorProfile:
+        return self.SPRAYER_FLAVOR_ATTACK_PROFILES.get(
+            str(flavor_tag),
+            self.SPRAYER_FLAVOR_ATTACK_PROFILES["STANDARD"],
+        )
+
+    def create_boss_hazard_for_spawn(
+        self,
+        *,
+        tier: int,
+        base_speed: float,
+        flavor_tag: str,
+        boss_variant_id: str = "classic",
+    ) -> BossBalloon:
+        resolved_variant_id, variant_profile = BossBalloon.resolve_profile(boss_variant_id)
         profile = EnemySpawnProfile(
             tier=tier,
             speed=base_speed * 0.5,
-            health=3,
+            health=variant_profile.max_health,
             movement_profile="boss_charge",
             flavor_tag=flavor_tag,
             enemy_kind="boss_balloon",
+            boss_variant_id=resolved_variant_id,
         )
-        boss = BossBalloon(speed=profile.speed)
+        boss = BossBalloon(
+            speed=profile.speed,
+            profile_id=resolved_variant_id,
+            max_health=variant_profile.max_health,
+            damage_per_hit=variant_profile.damage_per_hit,
+        )
         boss.apply_spawn_profile(self._profile_to_dict(profile))
         return boss
 
@@ -211,7 +453,7 @@ class SpawnController:
         return [(tier, weight) for tier, weight in pool if weight > 0.0]
 
     def _profile_to_dict(self, profile: EnemySpawnProfile) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "tier": profile.tier,
             "speed": profile.speed,
             "health": profile.health,
@@ -219,6 +461,21 @@ class SpawnController:
             "flavor_tag": profile.flavor_tag,
             "enemy_kind": profile.enemy_kind,
         }
+        if profile.boss_variant_id is not None:
+            payload["boss_variant_id"] = profile.boss_variant_id
+        if profile.break_confetti_count is not None:
+            payload["break_confetti_count"] = profile.break_confetti_count
+        if profile.mini_spawn_count is not None:
+            payload["mini_spawn_count"] = profile.mini_spawn_count
+        if profile.spray_cooldown is not None:
+            payload["spray_cooldown"] = profile.spray_cooldown
+        if profile.spray_angle is not None:
+            payload["spray_angle"] = profile.spray_angle
+        if profile.spray_projectile_count is not None:
+            payload["spray_projectile_count"] = profile.spray_projectile_count
+        if profile.spray_projectile_speed is not None:
+            payload["spray_projectile_speed"] = profile.spray_projectile_speed
+        return payload
 
     def _normalize_tier_weight_template(
         self,

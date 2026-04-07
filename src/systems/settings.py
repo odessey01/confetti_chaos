@@ -18,10 +18,18 @@ def clamp_selected_start_level(value: int) -> int:
     return max(MIN_START_LEVEL, min(int(value), MAX_START_LEVEL))
 
 
+def clamp_volume(value: float) -> float:
+    return max(0.0, min(float(value), 1.0))
+
+
 @dataclass
 class RuntimeSettings:
     music_enabled: bool = True
     selected_start_level: int = 1
+    master_volume: float = 0.8
+    music_volume: float = 0.7
+    sfx_volume: float = 0.9
+    ambient_volume: float = 0.5
     # Placeholder hook for future settings expansion.
     window_mode: str = "windowed"
 
@@ -38,6 +46,10 @@ class RuntimeSettings:
         return {
             "music_enabled": bool(self.music_enabled),
             "selected_start_level": clamp_selected_start_level(self.selected_start_level),
+            "master_volume": clamp_volume(self.master_volume),
+            "music_volume": clamp_volume(self.music_volume),
+            "sfx_volume": clamp_volume(self.sfx_volume),
+            "ambient_volume": clamp_volume(self.ambient_volume),
         }
 
 
@@ -61,6 +73,16 @@ def load_settings(path: Path | None = None) -> RuntimeSettings:
 
     music_enabled = payload.get("music_enabled", defaults.music_enabled)
     selected_start_level = payload.get("selected_start_level", defaults.selected_start_level)
+    master_volume = payload.get("master_volume", defaults.master_volume)
+    music_volume = payload.get("music_volume", defaults.music_volume)
+    sfx_volume = payload.get("sfx_volume", defaults.sfx_volume)
+    ambient_volume = payload.get("ambient_volume", defaults.ambient_volume)
+
+    def _parse_volume(value: object, fallback: float) -> float:
+        if isinstance(value, (int, float)):
+            return clamp_volume(float(value))
+        return fallback
+
     return RuntimeSettings(
         music_enabled=bool(music_enabled),
         selected_start_level=(
@@ -68,6 +90,10 @@ def load_settings(path: Path | None = None) -> RuntimeSettings:
             if isinstance(selected_start_level, int)
             else defaults.selected_start_level
         ),
+        master_volume=_parse_volume(master_volume, defaults.master_volume),
+        music_volume=_parse_volume(music_volume, defaults.music_volume),
+        sfx_volume=_parse_volume(sfx_volume, defaults.sfx_volume),
+        ambient_volume=_parse_volume(ambient_volume, defaults.ambient_volume),
     )
 
 

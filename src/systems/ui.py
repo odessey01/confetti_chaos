@@ -63,8 +63,8 @@ class UiRenderer:
 
         for idx, option in enumerate(options):
             label = option
-            if option == "Toggle Music":
-                label = f"Toggle Music: {'On' if music_enabled else 'Off'}"
+            if option == "Toggle Sound":
+                label = f"Toggle Sound: {'On' if music_enabled else 'Off'}"
             elif option == "Level Select":
                 label = f"Level Select: {selected_start_level}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
@@ -107,8 +107,8 @@ class UiRenderer:
 
         for idx, option in enumerate(options):
             label = option
-            if option == "Toggle Music":
-                label = f"Toggle Music: {'On' if audio_enabled else 'Off'}"
+            if option == "Toggle Sound":
+                label = f"Toggle Sound: {'On' if audio_enabled else 'Off'}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
             option_surface = self._prompt_font.render(label, True, color)
             option_rect = option_surface.get_rect(center=(center_x, center_y - 30 + (idx * 40)))

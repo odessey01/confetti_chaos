@@ -19,6 +19,7 @@ from main import (  # noqa: E402
     next_pause_menu_index,
     pause_menu_action_for_index,
     should_update_playing,
+    ui_sfx_for_pause_action,
 )
 from systems.settings import RuntimeSettings  # noqa: E402
 
@@ -61,8 +62,12 @@ class PauseMenuValidationTests(unittest.TestCase):
     def test_pause_menu_action_mapping(self) -> None:
         self.assertEqual(pause_menu_action_for_index(0), PauseMenuAction.RESUME)
         self.assertEqual(pause_menu_action_for_index(1), PauseMenuAction.RESTART)
-        self.assertEqual(pause_menu_action_for_index(2), PauseMenuAction.TOGGLE_MUSIC)
+        self.assertEqual(pause_menu_action_for_index(2), PauseMenuAction.TOGGLE_SOUND)
         self.assertEqual(pause_menu_action_for_index(3), PauseMenuAction.QUIT_TO_MENU)
+        self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.RESUME), "ui_resume")
+        self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.RESTART), "ui_confirm")
+        self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.TOGGLE_SOUND), "ui_toggle_settings")
+        self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.QUIT_TO_MENU), "ui_back")
 
     def test_should_update_playing_freeze_gate(self) -> None:
         self.assertTrue(should_update_playing(GameState.PLAYING))
@@ -104,7 +109,7 @@ class PauseMenuValidationTests(unittest.TestCase):
         self.assertEqual(audio.restart_sound_calls, 1)
 
         toggled = execute_pause_menu_action(
-            PauseMenuAction.TOGGLE_MUSIC,
+            PauseMenuAction.TOGGLE_SOUND,
             state=GameState.PAUSED,
             session=session,
             runtime_settings=settings,

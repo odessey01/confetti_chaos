@@ -9,6 +9,7 @@ import pygame
 
 from systems import (
     AudioManager,
+    BackgroundRenderer,
     GameSession,
     InputController,
     RuntimeSettings,
@@ -31,8 +32,8 @@ WINDOW_HEIGHT = 720
 WINDOW_TITLE = "Confetti Chaos"
 TARGET_FPS = 60
 HAZARD_COUNT = 1
-START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Music", "Quit")
-PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Music", "Quit to Menu")
+START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Quit")
+PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Quit to Menu")
 
 
 class GameState(str, Enum):
@@ -45,14 +46,14 @@ class GameState(str, Enum):
 class PauseMenuAction(str, Enum):
     RESUME = "Resume"
     RESTART = "Restart"
-    TOGGLE_MUSIC = "Toggle Music"
+    TOGGLE_SOUND = "Toggle Sound"
     QUIT_TO_MENU = "Quit to Menu"
 
 
 class StartMenuAction(str, Enum):
     START_GAME = "Start Game"
     LEVEL_SELECT = "Level Select"
-    TOGGLE_MUSIC = "Toggle Music"
+    TOGGLE_SOUND = "Toggle Sound"
     QUIT = "Quit"
 
 
@@ -95,6 +96,42 @@ def should_update_playing(state: GameState) -> bool:
     return state == GameState.PLAYING
 
 
+def desired_music_track_for_state(state: GameState, *, boss_active: bool) -> str | None:
+    if state == GameState.MENU:
+        return "menu"
+    if state == GameState.PLAYING:
+        return "boss" if boss_active else "gameplay"
+    if state in (GameState.PAUSED, GameState.GAME_OVER):
+        return "gameplay"
+    return None
+
+
+def desired_ambient_track_for_state(state: GameState) -> str | None:
+    if state == GameState.PLAYING:
+        return "gameplay"
+    return None
+
+
+def ui_sfx_for_start_action(action: StartMenuAction) -> str:
+    mapping = {
+        StartMenuAction.START_GAME: "ui_confirm",
+        StartMenuAction.LEVEL_SELECT: "ui_toggle_settings",
+        StartMenuAction.TOGGLE_SOUND: "ui_toggle_settings",
+        StartMenuAction.QUIT: "ui_back",
+    }
+    return mapping[action]
+
+
+def ui_sfx_for_pause_action(action: PauseMenuAction) -> str:
+    mapping = {
+        PauseMenuAction.RESUME: "ui_resume",
+        PauseMenuAction.RESTART: "ui_confirm",
+        PauseMenuAction.TOGGLE_SOUND: "ui_toggle_settings",
+        PauseMenuAction.QUIT_TO_MENU: "ui_back",
+    }
+    return mapping[action]
+
+
 def execute_pause_menu_action(
     action: PauseMenuAction,
     *,
@@ -113,7 +150,7 @@ def execute_pause_menu_action(
         audio.play_start_or_restart()
         visual_feedback.trigger_state_transition()
         return transition_state(state, GameState.PLAYING)
-    if action == PauseMenuAction.TOGGLE_MUSIC:
+    if action == PauseMenuAction.TOGGLE_SOUND:
         runtime_settings.music_enabled = not runtime_settings.music_enabled
         audio.set_enabled(runtime_settings.music_enabled)
         save_hook(runtime_settings)
@@ -145,7 +182,7 @@ def execute_start_menu_action(
         )
         save_hook(runtime_settings)
         return state, True
-    if action == StartMenuAction.TOGGLE_MUSIC:
+    if action == StartMenuAction.TOGGLE_SOUND:
         runtime_settings.music_enabled = not runtime_settings.music_enabled
         audio.set_enabled(runtime_settings.music_enabled)
         save_hook(runtime_settings)
@@ -168,13 +205,29 @@ def main() -> int:
     input_controller = InputController()
     runtime_settings = load_settings()
     audio.set_enabled(runtime_settings.music_enabled)
+    audio.apply_mix(
+        master=runtime_settings.master_volume,
+        music=runtime_settings.music_volume,
+        sfx=runtime_settings.sfx_volume,
+        ambient=runtime_settings.ambient_volume,
+    )
     ui = UiRenderer()
     visual_feedback = VisualFeedback()
+    background = BackgroundRenderer((WINDOW_WIDTH, WINDOW_HEIGHT))
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
 
     state = GameState.MENU
-    audio.sync_music_for_state(state.value)
+    track = desired_music_track_for_state(state, boss_active=False)
+    if track is None:
+        audio.stop_music()
+    else:
+        audio.play_music(track)
+    ambient_track = desired_ambient_track_for_state(state)
+    if ambient_track is None:
+        audio.stop_ambient()
+    else:
+        audio.play_ambient(ambient_track)
     start_menu_index = 0
     pause_menu_index = 0
     running = True
@@ -192,10 +245,13 @@ def main() -> int:
                     save_settings(runtime_settings)
                 if state == GameState.MENU and input_controller.is_menu_up(event):
                     start_menu_index = next_start_menu_index(start_menu_index, -1)
+                    audio.play_sfx("ui_nav")
                 elif state == GameState.MENU and input_controller.is_menu_down(event):
                     start_menu_index = next_start_menu_index(start_menu_index, 1)
+                    audio.play_sfx("ui_nav")
                 elif state == GameState.MENU and input_controller.is_menu_confirm(event):
                     action = start_menu_action_for_index(start_menu_index)
+                    audio.play_sfx(ui_sfx_for_start_action(action))
                     state, running = execute_start_menu_action(
                         action,
                         state=state,
@@ -205,19 +261,24 @@ def main() -> int:
                         visual_feedback=visual_feedback,
                     )
                 elif state == GameState.MENU and input_controller.is_menu_quit(event):
+                    audio.play_sfx("ui_back")
                     running = False
                 elif state == GameState.PLAYING and input_controller.is_pause_toggle(event):
                     state = transition_state(state, GameState.PAUSED)
                     pause_menu_index = 0
+                    audio.play_sfx("ui_pause")
                     visual_feedback.trigger_state_transition()
                 elif state == GameState.PLAYING and input_controller.is_attack(event):
                     attack = True
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_up(event):
                     pause_menu_index = next_pause_menu_index(pause_menu_index, -1)
+                    audio.play_sfx("ui_nav")
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_down(event):
                     pause_menu_index = next_pause_menu_index(pause_menu_index, 1)
+                    audio.play_sfx("ui_nav")
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_confirm(event):
                     action = pause_menu_action_for_index(pause_menu_index)
+                    audio.play_sfx(ui_sfx_for_pause_action(action))
                     state = execute_pause_menu_action(
                         action,
                         state=state,
@@ -235,19 +296,37 @@ def main() -> int:
                         audio=audio,
                         visual_feedback=visual_feedback,
                     )
+                    audio.play_sfx("ui_resume")
                 elif state == GameState.GAME_OVER and input_controller.is_restart(event):
+                    audio.play_sfx("ui_confirm")
                     state = transition_state(state, GameState.PLAYING)
                     session.start_new_run(start_level=runtime_settings.selected_start_level)
                     audio.play_start_or_restart()
                     visual_feedback.trigger_state_transition()
 
-        audio.sync_music_for_state(state.value)
+        audio.apply_mix(
+            master=runtime_settings.master_volume,
+            music=runtime_settings.music_volume,
+            sfx=runtime_settings.sfx_volume,
+            ambient=runtime_settings.ambient_volume,
+        )
+
+        track = desired_music_track_for_state(state, boss_active=session.boss_active)
+        if track is None:
+            audio.stop_music()
+        else:
+            audio.play_music(track)
+        ambient_track = desired_ambient_track_for_state(state)
+        if ambient_track is None:
+            audio.stop_ambient()
+        else:
+            audio.play_ambient(ambient_track)
 
         if should_update_playing(state):
             movement_input = input_controller.movement_vector()
             collided = session.update_playing(delta_seconds, movement_input, attack)
             if collided:
-                audio.play_collision()
+                audio.play_sfx("player_damage_or_death")
                 visual_feedback.trigger_collision_feedback()
                 if session.score_value > high_score:
                     high_score = session.score_value
@@ -255,9 +334,25 @@ def main() -> int:
                 state = transition_state(state, GameState.GAME_OVER)
                 visual_feedback.trigger_state_transition()
 
-            if session.boss_victory_sound_pending:
-                audio.play_boss_victory()
-                session.clear_boss_victory_sound_pending()
+            audio_cues = session.consume_audio_cues()
+            if audio_cues["level_transition"]:
+                audio.play_sfx("level_transition")
+            if audio_cues["boss_spawn"]:
+                audio.play_sfx("boss_spawn")
+            for _ in range(min(4, int(audio_cues["balloon_hit_count"]))):
+                audio.play_sfx("balloon_hit")
+            for _ in range(min(4, int(audio_cues["balloon_pop_count"]))):
+                audio.play_sfx("balloon_pop")
+            for _ in range(min(3, int(audio_cues["boss_hit_count"]))):
+                audio.play_sfx("boss_hit")
+            if audio_cues["boss_defeat"]:
+                audio.play_sfx("boss_defeat")
+            if audio_cues["boss_phase_change"]:
+                audio.play_sfx("milestone_clear")
+            if audio_cues["milestone_clear"]:
+                audio.play_sfx("milestone_clear")
+            if audio_cues["confetti_celebration"]:
+                audio.play_sfx("confetti_celebration")
 
             for center in session.consume_spawn_pulse_centers():
                 visual_feedback.add_spawn_pulse(center)
@@ -265,7 +360,14 @@ def main() -> int:
         visual_feedback.update(delta_seconds)
 
         world_surface = pygame.Surface(screen.get_size())
-        world_surface.fill((20, 20, 30))
+        if state in (GameState.PLAYING, GameState.PAUSED):
+            flavor_name = session.current_level_config.flavor.name
+            player_center = session.player.rect.center
+        else:
+            flavor_name = "STANDARD"
+            player_center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        background.update(delta_seconds, flavor_name=flavor_name)
+        background.draw(world_surface, player_center=player_center)
 
         ui.draw_score(world_surface, session.score_value)
         ui.draw_level(world_surface, session.current_level)
