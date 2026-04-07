@@ -6,560 +6,584 @@ Goal: Deliver a minimal, playable game loop that can be launched, played, failed
 
 ---
 
-## Task 0 – Project Setup
+## Task 34 – Enemy Snapshot Persistence on Level Transition
 
 **Status:** DONE
 
 ### Objective
 
-Create initial project structure and runnable game entry point.
+Ensure enemies already on screen keep their current attributes when the level changes.
 
 ### Requirements
 
-* Create folder structure:
+* When a level transition occurs, existing enemies must retain:
 
-  * `src/`
-  * `src/systems/`
-  * `src/player/`
-  * `src/enemies/`
-  * `assets/`
-  * `tests/`
+  * current speed
+  * current health
+  * current behavior parameters
+  * any flavor-specific traits assigned at spawn
 
-* Create:
+* Level-up logic should affect only:
 
-  * `src/main.py`
-  * basic game loop (window opens, runs, closes cleanly)
+  * newly spawned enemies
+  * future spawn rules
 
-* Choose framework:
-
-  * Default: `pygame`
+* Prevent retroactive mutation of active enemy instances
 
 ### Acceptance Criteria
 
-* Running `python src/main.py` opens a window
-* No errors in console
-* Clean exit on close
+* Enemies already on screen do not suddenly change behavior on level-up
+* Only newly spawned enemies reflect the new level configuration
+* Level transitions feel smooth and readable
 
 ---
 
-## Task 1 – Game Loop & State Management
+## Task 35 – Spawn-Time Enemy Attribute Assignment
 
 **Status:** DONE
 
 ### Objective
 
-Implement a basic game state system.
+Assign enemy difficulty and behavior at the moment of spawn rather than recalculating from global level state.
 
 ### Requirements
 
-* Create game states:
+* Each enemy instance should receive a spawn-time attribute set, such as:
 
-  * `MENU`
-  * `PLAYING`
-  * `GAME_OVER`
+  * tier
+  * speed
+  * health
+  * movement profile
+  * flavor tag
 
-* Implement state transitions:
+* Store these values on the enemy instance
 
-  * Start → PLAYING
-  * Death → GAME_OVER
-  * Restart → PLAYING
+* Avoid referencing current global level for per-frame enemy scaling
 
 ### Acceptance Criteria
 
-* Game can transition between states without crashing
-* State changes are clearly logged or visible
+* Enemy behavior is determined at spawn and remains stable
+* Attribute assignment is modular and easy to inspect
+* No active enemy changes stats due to later level increases
 
 ---
 
-## Task 2 – Player Movement
+## Task 36 – Partial Tier Advancement Per Level
 
 **Status:** DONE
 
 ### Objective
 
-Add controllable player entity.
+Flatten the power curve by allowing each level to introduce only some stronger enemies rather than upgrading the whole field.
 
 ### Requirements
 
-* Player object/module
-* Movement using keyboard:
+* On each level increase, only a portion of newly spawned enemies should use the newest tier/config
 
-  * WASD or arrow keys
-* Smooth movement (no grid snapping)
+* Remaining newly spawned enemies should come from one or more earlier tiers
+
+* Add configurable weighting for spawn tiers, for example:
+
+  * newest tier
+  * previous tier
+  * older fallback tier
+
+* Keep logic flexible and data-driven
 
 ### Acceptance Criteria
 
-* Player moves responsively
-* Movement feels immediate (no lag)
-* Player remains within screen bounds
+* Level progression feels smoother and less spiky
+* New difficulty enters gradually rather than all at once
+* Enemy populations show a mix of tiers during mid-to-late levels
 
 ---
 
-## Task 3 – Core Mechanic (Dodge or Avoid)
+## Task 37 – Tier Pool Decay for Older Enemies
 
 **Status:** DONE
 
 ### Objective
 
-Implement the primary gameplay mechanic.
+Allow lower-tier enemies to gradually drop out of the spawn pool as the player progresses.
 
 ### Requirements
 
-* Choose mechanic:
+* Add tier retirement or reduced weighting logic
 
-  * Default: avoid incoming enemies/hazards
+* Older enemy tiers should:
 
-* Spawn at least one hazard type
+  * remain common in early progression
+  * become less common in later progression
+  * eventually drop out when no longer useful
 
-* Hazards move toward or across the player
+* Support configurable cutoffs or weighted decay
 
 ### Acceptance Criteria
 
-* Hazards appear and move
-* Player must actively avoid them
-* Interaction creates tension
+* Early-tier enemies fade out naturally over time
+* Spawn pool remains readable and intentionally paced
+* Difficulty increases without overcrowding the game with obsolete enemy types
 
 ---
 
-## Task 4 – Collision System
+## Task 38 – Mixed-Tier Spawn Balancing & Telemetry
 
 **Status:** DONE
 
 ### Objective
 
-Detect interactions between player and hazards.
+Validate that mixed-tier spawning creates a smooth and fair difficulty curve.
 
 ### Requirements
 
-* Implement collision detection
-* On collision:
+* Add lightweight debugging or logging for spawned enemy tiers
 
-  * Trigger GAME_OVER state
+* Make it easy to inspect:
+
+  * current level
+  * active flavor
+  * spawn tier distribution
+  * boss level overrides if applicable
+
+* Tune spawn weights so the game avoids:
+
+  * abrupt spikes
+  * excessively weak late-game waves
+  * confusing mixtures that feel random
 
 ### Acceptance Criteria
 
-* Collision is accurate and consistent
-* Game reliably ends on contact
+* Tier mix can be observed and tuned easily
+* Difficulty ramps feel intentional in playtesting
+* Spawn distribution supports both variety and fairness
 
----
-
-## Task 5 – Score System
+## Task 39 – Settings System Foundation
 
 **Status:** DONE
 
 ### Objective
 
-Track player performance.
+Create a centralized system to manage game settings.
 
 ### Requirements
 
-* Score increases over time or survival
-* Display score on screen
+* Create a settings module (e.g., `systems/settings.py`)
+
+* Store settings such as:
+
+  * music_enabled (bool)
+  * selected_start_level (int)
+
+* Provide:
+
+  * load settings from file
+  * save settings to file
+  * default fallback values
+
+* Use simple format (JSON recommended)
 
 ### Acceptance Criteria
 
-* Score updates in real time
-* Score resets on restart
+* Settings load on game start
+* Settings persist between sessions
+* Missing or corrupt file does not crash the game
 
 ---
 
-## Task 6 – Game Over + Restart Loop
+## Task 40 – Pause Menu Overlay
 
 **Status:** DONE
 
 ### Objective
 
-Enable fast replay loop.
+Add an interactive pause menu with selectable options.
 
 ### Requirements
 
-* Display "Game Over"
-* Show final score
-* Restart input (e.g., press R or Space)
+* Trigger pause with key (Esc or P)
+
+* Freeze gameplay updates while paused
+
+* Display overlay with options:
+
+  * Resume
+  * Restart
+  * Toggle Music
+  * Quit to Menu
+
+* Basic navigation:
+
+  * keyboard up/down
+  * confirm selection
 
 ### Acceptance Criteria
 
-* Restart happens in <3 seconds
-* Game resets cleanly (no lingering state)
+* Gameplay fully pauses (no movement/spawn updates)
+* Menu is responsive and readable
+* Resume returns to exact prior state
 
 ---
 
-## Task 7 – Basic UI Layer
+## Task 41 – Start Menu Enhancements
 
 **Status:** DONE
 
 ### Objective
 
-Add minimal UI elements.
+Expand main menu to include configurable options.
 
 ### Requirements
 
-* Render:
+* Add menu options:
 
-  * Score
-  * Game state text (Start / Game Over)
+  * Start Game
+  * Level Select
+  * Toggle Music
+  * Quit
+
+* Show current setting values (e.g., Music: ON/OFF)
 
 ### Acceptance Criteria
 
-* UI is readable and not intrusive
-* No performance impact
+* Menu displays options clearly
+* User can navigate and select options
+* Selected settings reflect immediately
 
 ---
 
-## Task 8 – Basic Structure Refactor
+## Task 42 – Level Select Feature
 
 **Status:** DONE
 
 ### Objective
 
-Clean up code for modularity.
+Allow player to choose starting level.
 
 ### Requirements
 
-* Separate logic into modules:
+* Add level selection UI:
 
-  * player
-  * enemies
-  * systems
-* Remove duplicated code
+  * simple increment/decrement or list
+
+* Apply selected level when starting game
+
+* Clamp values to valid range
+
+* Integrate with progression system
 
 ### Acceptance Criteria
 
-* No single file > ~300 lines
-* Clear separation of concerns
+* Player can start at selected level
+* Game initializes correctly at that level
+* No progression bugs or crashes
 
 ---
 
-## Task 9 – Basic Testing / Validation
+## Task 43 – Music Toggle Integration
 
 **Status:** DONE
 
 ### Objective
 
-Ensure stability of core systems.
+Control background music through settings.
 
 ### Requirements
 
-* Add at least:
+* Add background music system (basic loop)
 
-  * one test or validation for collision
-  * one test or validation for state transitions
+* Respect `music_enabled` setting:
 
-### Acceptance Criteria
-
-* Tests run without failure
-* No runtime crashes during normal play
-
----
-
-## Task 10 – Pre-Packaging Prep
-
-**Status:** DONE
-
-### Objective
-
-Prepare project for packaging.
-
-### Requirements
+  * do not play if disabled
+  * stop/start when toggled
 
 * Ensure:
 
-  * no hardcoded paths
-  * assets load correctly
-  * game runs from root
+  * no crashes if audio missing
+  * no overlapping tracks
 
 ### Acceptance Criteria
 
-* Game runs from clean environment
-* Ready for PyInstaller step
+* Music toggles correctly from menus
+* Setting persists across sessions
+* Audio behavior is stable and predictable
+
+## Task 44 – Audio System Foundation
+
+**Status:** TODO
+
+### Objective
+
+Create a centralized audio system for music, sound effects, and ambient loops.
+
+### Requirements
+
+* Add an audio manager module
+
+* Support separate channels or categories for:
+
+  * sound effects
+  * music
+  * ambient audio
+
+* Provide simple methods such as:
+
+  * play_sfx(name)
+  * play_music(track)
+  * stop_music()
+  * play_ambient(track)
+  * stop_ambient()
+
+* Integrate with existing settings:
+
+  * music enabled
+  * future sound enabled / volume controls
+
+* Fail gracefully if an audio asset is missing
+
+### Acceptance Criteria
+
+* Audio playback is controlled from one system
+* Missing files do not crash the game
+* Music, ambience, and SFX can be managed independently
 
 ---
 
-## Task 11 – Difficulty Scaling
+## Task 45 – Core Gameplay Sound Effects
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Make the game become more challenging over time.
+Add essential gameplay sound effects to improve feedback and responsiveness.
 
 ### Requirements
 
-* Increase hazard/enemy pressure gradually
+* Add sound effects for at least:
 
-* Scale one or more of:
+  * player weapon fire
+  * balloon hit
+  * balloon pop / kill
+  * player damage or death
+  * level transition
 
-  * spawn rate
-  * movement speed
-  * number of simultaneous hazards
+* Ensure sounds are short, readable, and not overly harsh
 
-* Keep early game fair
-
-* Avoid sudden, unfair spikes
+* Avoid excessive overlap or distortion during heavy action
 
 ### Acceptance Criteria
 
-* Game difficulty clearly ramps up over time
-* Early gameplay is manageable
-* Difficulty feels intentional, not random
+* Core gameplay events all have clear sound feedback
+* Sounds trigger reliably at the correct moments
+* Repeated gameplay actions do not produce broken or overwhelming audio
 
 ---
 
-## Task 12 – Spawn System Refactor
+## Task 46 – Menu & UI Audio
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Create a cleaner and more controllable spawning system.
+Add audio feedback for menus and interface interactions.
 
 ### Requirements
 
-* Centralize hazard/enemy spawning logic
-* Support configurable spawn timing
-* Prevent impossible or unfair spawn locations
-* Make spawn parameters easy to tune
+* Add sounds for:
+
+  * menu navigation
+  * selection / confirm
+  * back / cancel
+  * pause and resume
+  * settings toggle
+
+* Keep UI sounds subtle and distinct from combat audio
 
 ### Acceptance Criteria
 
-* Spawn behavior is predictable and adjustable
-* No hazards spawn directly on the player
-* Spawn logic is separated from main loop
+* Menu interactions feel more responsive
+* UI sounds are clear but not distracting
+* Menu audio remains consistent across start, pause, and game over flows
 
 ---
 
-## Task 13 – Main Menu Polish
+## Task 47 – Ambient Music System
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Turn the start flow into a more complete player experience.
+Introduce background music that supports the tone of gameplay.
 
 ### Requirements
 
-* Add a simple title screen
+* Add looping music playback for gameplay
 
-* Show:
+* Support at least:
 
-  * game title
-  * start prompt
-  * quit prompt
+  * main menu music
+  * gameplay music
+  * boss or milestone music placeholder
 
-* Ensure transition into gameplay is smooth
+* Music should transition cleanly between states
+
+* Respect music enabled setting at all times
 
 ### Acceptance Criteria
 
-* Menu is clear and readable
-* Player can start or quit without confusion
-* State transition from menu to gameplay is reliable
+* Music plays in the correct game states
+* Music does not overlap incorrectly across transitions
+* Toggling music on/off works reliably during runtime
 
 ---
 
-## Task 14 – High Score Persistence
+## Task 48 – Ambient Sound Layer
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Save player progress between runs.
+Add environmental ambience to give the game more atmosphere.
 
 ### Requirements
 
-* Save high score locally
-* Load high score on startup
-* Display high score in menu or game over screen
-* Handle missing save file safely
+* Add a lightweight ambient layer for gameplay, such as:
+
+  * wind
+  * soft room tone
+  * subtle floating/party atmosphere
+  * tonal background texture
+
+* Ambient layer should sit underneath music and SFX
+
+* Allow ambient audio to be enabled/disabled through the audio system
 
 ### Acceptance Criteria
 
-* High score persists between sessions
-* Game does not crash if save file is missing or corrupt
-* High score display updates correctly
+* Gameplay feels more alive and immersive
+* Ambient audio does not interfere with core gameplay sounds
+* Ambient layer can be started/stopped cleanly with game state changes
 
 ---
 
-## Task 15 – Audio Pass (Minimal)
+## Task 49 – Audio Mixing & Volume Controls
 
-**Status:** DONE
-
-### Objective
-
-Add basic sound feedback to improve feel.
-
-### Requirements
-
-* Add at least:
-
-  * one sound for collision/game over
-  * one sound for menu start or restart
-
-* Keep implementation simple
-
-* Allow game to run even if audio assets are unavailable
-
-### Acceptance Criteria
-
-* Sounds play at the correct moments
-* Missing or failed audio load does not crash the game
-* Audio improves feedback without becoming distracting
-
-## Milestone – Prototype Complete
-At this point the game should feel like a real, replayable product rather than a technical demo.
-
-## Task 16 – Visual Feedback & Juice Pass
-
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Improve clarity and game feel through simple visual feedback.
+Make the audio suite controllable and balanced.
 
 ### Requirements
 
-* Add visual feedback for:
+* Add separate volume settings for:
 
-  * player hit / death
-  * hazard spawn or movement emphasis
-  * state transitions (menu → play, play → game over)
+  * master volume
+  * music volume
+  * SFX volume
+  * ambient volume
 
-* Consider lightweight effects such as:
+* Persist volume settings between sessions
 
-  * flash on collision
-  * brief screen shake
-  * fade in/out text
-  * simple particle burst
-
-* Keep effects minimal and performance-friendly
+* Apply settings dynamically without restart if possible
 
 ### Acceptance Criteria
 
-* Important gameplay events are more visible
-* Visual feedback improves feel without clutter
-* No noticeable performance drop
+* Volume controls affect the correct audio categories
+* Settings persist across sessions
+* Audio balance is noticeably improved during playtesting
 
 ---
 
-## Task 17 – Second Hazard or Enemy Type
+## Task 50 – Boss & Special Event Audio Pass
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Increase gameplay variety with an additional challenge type.
+Create more impactful sound design for boss fights and milestone events.
 
 ### Requirements
 
-* Add one new hazard/enemy behavior distinct from the first
+* Add distinct audio for:
 
-* Examples:
+  * boss spawn
+  * boss hit
+  * boss defeat
+  * milestone / level clear
+  * enhanced confetti celebration
 
-  * faster but fragile hazard
-  * slower tracking hazard
-  * hazard with intermittent movement
-  * obstacle that constrains movement
-
-* Ensure both hazard types can appear during gameplay
-
-* Balance for fairness and readability
+* Boss audio should feel bigger and more dramatic than standard enemy sounds
 
 ### Acceptance Criteria
 
-* New hazard type is visually and behaviorally distinct
-* Gameplay variety is noticeably improved
-* Combined hazard behavior remains fair and playable
+* Boss encounters sound distinct from normal gameplay
+* Milestone events feel more rewarding
+* Special event audio enhances excitement without overwhelming the mix
 
 ---
 
-## Task 18 – Pause & Basic Settings
+## Task 51 – Audio Asset Organization & Fallback Rules
 
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Add a minimal pause flow and player control over basic settings.
+Keep audio assets maintainable and safe for iteration.
 
 ### Requirements
 
-* Add pause toggle (e.g., Esc or P)
+* Organize assets into folders such as:
 
-* While paused:
+  * assets/audio/sfx/
+  * assets/audio/music/
+  * assets/audio/ambient/
 
-  * stop gameplay updates
-  * show pause message or overlay
+* Add a consistent naming convention
 
-* Add basic settings support for:
+* Define fallback behavior when:
 
-  * audio on/off or volume placeholder
-  * window mode placeholder or future config hook
+  * a sound is missing
+  * a track fails to load
+  * audio device is unavailable
 
 ### Acceptance Criteria
 
-* Player can pause and resume reliably
-* No gameplay state corruption while paused
-* Settings structure exists and can be extended later
+* Audio assets are easy to find and maintain
+* Missing or broken files do not disrupt gameplay
+* Audio system remains stable in partial-content states
 
 ---
 
-## Task 19 – Controller Support
+## Task 52 – Audio Polish & Repetition Control
 
-**Status:** DONE
-
-### Objective
-
-Prepare the game for a more Steam-friendly input experience.
-
-### Requirements
-
-* Add basic controller/gamepad input support
-
-* Support at minimum:
-
-  * movement
-  * start/restart
-  * menu confirm
-
-* Preserve keyboard support
-
-* Ensure input handling remains modular
-
-### Acceptance Criteria
-
-* Game is playable with either keyboard or controller
-* Input prompts or behavior remain clear
-* No regression to keyboard controls
-
----
-
-## Task 20 – Packaging & Release Prep
-
-**Status:** DONE
+**Status:** TODO
 
 ### Objective
 
-Create a repeatable build path for local release testing.
+Reduce fatigue and improve long-session listening quality.
 
 ### Requirements
 
-* Add packaging configuration for standalone build
+* Add basic protections against repetitive or harsh playback:
 
-* Validate:
+  * slight random pitch or volume variation where supported
+  * cooldown on repeated UI sounds
+  * multiple variants for common sounds if available
 
-  * assets are bundled correctly
-  * executable launches cleanly
-  * save/high score behavior works in packaged build
+* Review high-frequency sounds such as:
 
-* Document build steps
-
-* Add release checklist for local validation
+  * weapon fire
+  * balloon pops
+  * menu movement
 
 ### Acceptance Criteria
 
-* A standalone build can be created successfully
-* Packaged game runs without requiring local Python install
-* Build steps are documented clearly for future Steam upload workflow
+* Frequently repeated sounds feel less fatiguing
+* Audio remains pleasant during extended play
+* Repetition control does not break timing or clarity
 
-## Execution Rules for Agents
+
+# Execution Rules for Agents
 
 For each task:
 

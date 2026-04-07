@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pygame
 
 
@@ -11,6 +13,10 @@ class Player:
         self.size = size
         self.speed = speed
         self.color = (90, 220, 255)
+        self.accent_color = (245, 250, 255)
+        self.facing = pygame.Vector2(1, 0)
+        self._movement_phase = 0.0
+        self._movement_intensity = 0.0
 
     @property
     def rect(self) -> pygame.Rect:
@@ -25,10 +31,14 @@ class Player:
         movement_input: pygame.Vector2,
         bounds: pygame.Rect,
     ) -> None:
-        movement = pygame.Vector2(movement_input.x, movement_input.y)
-        if movement.length_squared() > 0:
-            movement = movement.normalize() * self.speed * delta_seconds
+        input_vector = pygame.Vector2(movement_input.x, movement_input.y)
+        input_strength = min(input_vector.length(), 1.0)
+        if input_vector.length_squared() > 0:
+            self.facing = input_vector.normalize()
+            movement = self.facing * self.speed * delta_seconds
             self.position += movement
+            self._movement_phase += delta_seconds * 18.0
+        self._movement_intensity = input_strength
 
         max_x = bounds.width - self.size
         max_y = bounds.height - self.size
@@ -36,4 +46,27 @@ class Player:
         self.position.y = max(0, min(self.position.y, max_y))
 
     def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.rect(surface, self.color, self.rect, border_radius=8)
+        center = pygame.Vector2(self.rect.center)
+        base_radius = self.size * 0.5
+        pulse = math.sin(self._movement_phase) * 0.07 * self._movement_intensity
+        radius_x = max(10.0, base_radius * (1.0 + pulse))
+        radius_y = max(10.0, base_radius * (1.0 - pulse))
+
+        body_rect = pygame.Rect(0, 0, int(radius_x * 2), int(radius_y * 2))
+        body_rect.center = (int(center.x), int(center.y))
+        pygame.draw.ellipse(surface, self.color, body_rect)
+        pygame.draw.ellipse(surface, self.accent_color, body_rect, width=2)
+
+        face_tip = center + self.facing * (base_radius * 0.9)
+        side = pygame.Vector2(-self.facing.y, self.facing.x)
+        left = center + side * (base_radius * 0.32)
+        right = center - side * (base_radius * 0.32)
+        pygame.draw.polygon(
+            surface,
+            self.accent_color,
+            [
+                (int(face_tip.x), int(face_tip.y)),
+                (int(left.x), int(left.y)),
+                (int(right.x), int(right.y)),
+            ],
+        )
