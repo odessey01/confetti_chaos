@@ -19,6 +19,7 @@ from main import (  # noqa: E402
     next_start_level,
     next_start_menu_index,
     start_menu_action_for_index,
+    ui_sfx_for_start_action,
 )
 from systems.settings import RuntimeSettings  # noqa: E402
 
@@ -61,8 +62,12 @@ class StartMenuValidationTests(unittest.TestCase):
     def test_start_menu_action_mapping(self) -> None:
         self.assertEqual(start_menu_action_for_index(0), StartMenuAction.START_GAME)
         self.assertEqual(start_menu_action_for_index(1), StartMenuAction.LEVEL_SELECT)
-        self.assertEqual(start_menu_action_for_index(2), StartMenuAction.TOGGLE_MUSIC)
+        self.assertEqual(start_menu_action_for_index(2), StartMenuAction.TOGGLE_SOUND)
         self.assertEqual(start_menu_action_for_index(3), StartMenuAction.QUIT)
+        self.assertEqual(ui_sfx_for_start_action(StartMenuAction.START_GAME), "ui_confirm")
+        self.assertEqual(ui_sfx_for_start_action(StartMenuAction.LEVEL_SELECT), "ui_toggle_settings")
+        self.assertEqual(ui_sfx_for_start_action(StartMenuAction.TOGGLE_SOUND), "ui_toggle_settings")
+        self.assertEqual(ui_sfx_for_start_action(StartMenuAction.QUIT), "ui_back")
 
     def test_level_select_cycles(self) -> None:
         self.assertEqual(next_start_level(1), 2)
@@ -107,7 +112,7 @@ class StartMenuValidationTests(unittest.TestCase):
         self.assertEqual(settings.selected_start_level, 5)
 
         state, running = execute_start_menu_action(
-            StartMenuAction.TOGGLE_MUSIC,
+            StartMenuAction.TOGGLE_SOUND,
             state=GameState.MENU,
             session=session,
             runtime_settings=settings,

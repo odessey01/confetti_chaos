@@ -1,6 +1,7 @@
 """System-level modules."""
 
 from .audio import AudioManager
+from .background import BackgroundRenderer
 from .game_session import GameSession
 from .high_score import load_high_score, save_high_score
 from .input_controller import InputController
@@ -19,6 +20,7 @@ from .visual_feedback import VisualFeedback
 
 __all__ = [
     "AudioManager",
+    "BackgroundRenderer",
     "GameSession",
     "InputController",
     "SpawnController",

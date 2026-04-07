@@ -68,7 +68,16 @@ class Confetti:
         """Initialize the confetti system."""
         self.particles: list[ConfettiParticle] = []
 
-    def spawn_burst(self, center: pygame.Vector2, count: int = 8) -> None:
+    def spawn_burst(
+        self,
+        center: pygame.Vector2,
+        count: int = 8,
+        *,
+        speed_min: float = 200.0,
+        speed_max: float = 300.0,
+        lifetime_min: float = 0.5,
+        lifetime_max: float = 0.8,
+    ) -> None:
         """Spawn a burst of confetti particles scattering outward.
 
         Args:
@@ -78,11 +87,11 @@ class Confetti:
         for _ in range(count):
             # Random angle around a circle
             angle = random.uniform(0, math.tau)
-            # Random speed between 200-300 px/sec
-            speed = random.uniform(200.0, 300.0)
+            # Random speed between configured bounds
+            speed = random.uniform(speed_min, speed_max)
             velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
             # Slight lifetime variation for organic feel
-            lifetime = random.uniform(0.5, 0.8)
+            lifetime = random.uniform(lifetime_min, lifetime_max)
 
             particle = ConfettiParticle(center, velocity, lifetime=lifetime)
             self.particles.append(particle)

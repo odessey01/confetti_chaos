@@ -24,7 +24,7 @@ class FlavorModifiers:
 class HazardMix:
     """Specifies the probability distribution of hazard types."""
     tracking_hazard_chance: float = 0.5  # Probability of spawning a tracking hazard
-    balloon_enemy_chance: float = 0.5    # Probability of spawning a balloon
+    balloon_enemy_chance: float = 0.35   # Probability of spawning a balloon
 
 
 def get_flavor_modifiers(flavor: LevelFlavor) -> FlavorModifiers:
@@ -59,19 +59,19 @@ def get_hazard_mix(flavor: LevelFlavor) -> HazardMix:
     mixes = {
         LevelFlavor.STANDARD: HazardMix(
             tracking_hazard_chance=0.5,
-            balloon_enemy_chance=0.5,
+            balloon_enemy_chance=0.35,
         ),
         LevelFlavor.SWARM: HazardMix(
             tracking_hazard_chance=0.2,
-            balloon_enemy_chance=0.8,
+            balloon_enemy_chance=0.65,
         ),
         LevelFlavor.HUNTERS: HazardMix(
             tracking_hazard_chance=0.6,
-            balloon_enemy_chance=0.4,
+            balloon_enemy_chance=0.25,
         ),
         LevelFlavor.STORM: HazardMix(
             tracking_hazard_chance=0.5,
-            balloon_enemy_chance=0.5,
+            balloon_enemy_chance=0.35,
         ),
     }
     return mixes[flavor]

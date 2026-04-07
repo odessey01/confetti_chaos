@@ -309,7 +309,7 @@ Control background music through settings.
 
 ## Task 44 – Audio System Foundation
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -350,7 +350,7 @@ Create a centralized audio system for music, sound effects, and ambient loops.
 
 ## Task 45 – Core Gameplay Sound Effects
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -380,7 +380,7 @@ Add essential gameplay sound effects to improve feedback and responsiveness.
 
 ## Task 46 – Menu & UI Audio
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -408,7 +408,7 @@ Add audio feedback for menus and interface interactions.
 
 ## Task 47 – Ambient Music System
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -438,7 +438,7 @@ Introduce background music that supports the tone of gameplay.
 
 ## Task 48 – Ambient Sound Layer
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -467,7 +467,7 @@ Add environmental ambience to give the game more atmosphere.
 
 ## Task 49 – Audio Mixing & Volume Controls
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -496,7 +496,7 @@ Make the audio suite controllable and balanced.
 
 ## Task 50 – Boss & Special Event Audio Pass
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -524,7 +524,7 @@ Create more impactful sound design for boss fights and milestone events.
 
 ## Task 51 – Audio Asset Organization & Fallback Rules
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -556,7 +556,7 @@ Keep audio assets maintainable and safe for iteration.
 
 ## Task 52 – Audio Polish & Repetition Control
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -581,6 +581,817 @@ Reduce fatigue and improve long-session listening quality.
 * Frequently repeated sounds feel less fatiguing
 * Audio remains pleasant during extended play
 * Repetition control does not break timing or clarity
+
+--- 
+
+## Task 53 – Boss Core Behavior (Chase System)
+
+**Status:** DONE
+
+### Objective
+
+Give boss balloons a distinct presence through active pursuit behavior.
+
+### Requirements
+
+* Implement chase logic:
+
+  * boss moves toward player position
+  * slower, more deliberate movement than normal enemies
+  * smooth tracking (no jitter)
+
+* Add slight variation:
+
+  * delayed reaction OR
+  * easing/acceleration toward player
+
+* Ensure boss movement is readable and avoid instant direction snapping
+
+### Acceptance Criteria
+
+* Boss consistently tracks player
+* Movement feels intentional, not erratic
+* Player can understand and react to boss behavior
+
+---
+
+## Task 54 – Boss Health System (Multi-Hit Combat)
+
+**Status:** DONE
+
+### Objective
+
+Make bosses durable and require sustained interaction.
+
+### Requirements
+
+* Add health system to boss:
+
+  * configurable max HP
+  * damage per hit from player weapon
+
+* Add visual feedback for damage:
+
+  * flash
+  * slight size change or wobble
+
+* Prevent rapid duplicate hit registration
+
+### Acceptance Criteria
+
+* Boss requires multiple hits to defeat
+* Damage feedback is visible and clear
+* No double-counting or missed hits
+
+---
+
+## Task 55 – Boss Attack Patterns (Surprise Effects)
+
+**Status:** DONE
+
+### Objective
+
+Introduce simple but varied boss abilities to create dynamic encounters.
+
+### Requirements
+
+* Implement at least 2–3 boss effects, such as:
+
+  * **Burst Spawn**: releases smaller balloons periodically
+  * **Speed Surge**: temporary increase in movement speed
+  * **Directional Charge**: quick movement toward player
+  * **Area Pressure**: temporarily increases spawn rate nearby
+
+* Trigger effects:
+
+  * on timer OR
+  * on damage thresholds
+
+* Keep each effect simple and readable
+
+### Acceptance Criteria
+
+* Boss uses abilities during encounter
+* Effects are noticeable but fair
+* Player can adapt and respond to each behavior
+
+---
+
+## Task 56 – Boss Phase System (Escalation)
+
+**Status:** DONE
+
+### Objective
+
+Make boss fights evolve as the player progresses through them.
+
+### Requirements
+
+* Divide boss health into phases (e.g., 2–3 stages)
+
+* On phase change:
+
+  * increase aggression OR
+  * unlock new behavior OR
+  * modify movement speed
+
+* Add clear phase transition feedback:
+
+  * visual cue
+  * brief pause or effect
+
+### Acceptance Criteria
+
+* Boss behavior changes during fight
+* Phase transitions are noticeable
+* Difficulty increases without becoming chaotic
+
+---
+
+## Task 57 – Boss Balance & Fairness Pass
+
+**Status:** DONE
+
+### Objective
+
+Ensure boss encounters are challenging but not frustrating.
+
+### Requirements
+
+* Tune:
+
+  * boss speed vs player speed
+  * attack frequency
+  * health values
+  * support enemy spawns
+
+* Ensure:
+
+  * player always has space to maneuver
+  * no unavoidable damage scenarios
+  * encounter length is reasonable
+
+* Validate across multiple levels and flavors
+
+### Acceptance Criteria
+
+* Boss fights feel fair and winnable
+* Difficulty aligns with progression level
+* No “unavoidable death” situations occur
+
+---
+
+## Task 58 – Boss Variety Hooks (Extensibility)
+
+**Status:** DONE
+
+### Objective
+
+Prepare the system to support multiple boss types in the future.
+
+### Requirements
+
+* Structure boss logic so behaviors can be:
+
+  * swapped
+  * combined
+  * extended
+
+* Support configuration such as:
+
+  * different health pools
+  * different ability sets
+  * flavor-specific bosses
+
+* Avoid hardcoding a single boss implementation
+
+### Acceptance Criteria
+
+* Boss system is modular and extendable
+* New boss variants can be added with minimal changes
+* Existing boss logic remains stable
+
+--- 
+
+## Task 59 – Piñata Enemy Type (Base Implementation)
+
+**Status:** DONE
+
+### Objective
+
+Introduce a new enemy type distinct from balloons.
+
+### Requirements
+
+* Create piñata enemy:
+
+  * visually distinct (larger, more angular or textured)
+  * different color palette from balloons
+
+* Movement:
+
+  * slower than balloons
+  * more deliberate or slightly drifting
+
+* Integrate into existing enemy system and spawn system
+
+### Acceptance Criteria
+
+* Piñata enemies spawn correctly
+* They are clearly distinguishable from balloons
+* Movement feels heavier and intentional
+
+---
+
+## Task 60 – Piñata Health & Durability
+
+**Status:** DONE
+
+### Objective
+
+Make piñata enemies require multiple hits.
+
+### Requirements
+
+* Assign higher health than balloons
+
+* Add damage feedback:
+
+  * wobble
+  * crack/flash effect
+  * slight visual degradation (optional)
+
+* Prevent rapid duplicate hits
+
+### Acceptance Criteria
+
+* Piñatas take multiple hits to destroy
+* Damage feedback is visible and satisfying
+* Combat interaction feels intentional
+
+---
+
+## Task 61 – Piñata Break Effect (Enhanced Confetti)
+
+**Status:** DONE
+
+### Objective
+
+Make piñata destruction a rewarding visual event.
+
+### Requirements
+
+* On destruction:
+
+  * spawn a larger confetti burst than normal balloons
+  * use varied colors and spread
+
+* Optional:
+
+  * slightly longer particle lifetime
+  * directional burst effect
+
+### Acceptance Criteria
+
+* Piñata destruction feels more rewarding than balloons
+* Confetti effect is clearly elevated but not overwhelming
+* Performance remains stable
+
+---
+
+## Task 62 – Piñata Surprise Behavior
+
+**Status:** DONE
+
+### Objective
+
+Add a unique twist to piñata enemies.
+
+### Requirements
+
+Implement at least one:
+
+* **Split Effect**: releases smaller balloons on destruction
+
+* **Delayed Burst**: slight delay before breaking into confetti
+
+* **Triggered Reaction**: briefly speeds up when hit
+
+* Keep behavior simple and readable
+
+### Acceptance Criteria
+
+* Piñatas behave differently from balloons
+* Behavior adds interest without confusion
+* Player can understand cause and effect
+
+---
+
+## Task 63 – Spawn Integration & Balance
+
+**Status:** DONE
+
+### Objective
+
+Integrate piñatas into level progression and spawn systems.
+
+### Requirements
+
+* Add piñatas to spawn pool:
+
+  * low frequency initially
+  * increase presence at higher levels
+
+* Integrate with:
+
+  * tier system
+  * flavor system
+  * boss levels (optional limited inclusion)
+
+* Ensure:
+
+  * they do not overwhelm gameplay
+  * they feel like special targets
+
+### Acceptance Criteria
+
+* Piñatas appear at appropriate frequency
+* They enhance gameplay variety
+* Difficulty remains fair and readable
+
+---
+
+## Task 64 – Piñata Tier Variants (Optional Extension)
+
+**Status:** DONE
+
+### Objective
+
+Allow piñatas to evolve with progression.
+
+### Requirements
+
+* Support tier-based variations such as:
+
+  * higher health
+  * stronger break effects
+  * additional mini-enemy spawns
+
+* Keep implementation lightweight and data-driven
+
+### Acceptance Criteria
+
+* Piñatas scale naturally with progression
+* Variants remain recognizable
+* System integrates cleanly with existing tier logic
+
+## Task 65 – Confetti Sprayer Enemy (Base Implementation)
+
+**Status:** DONE
+
+### Objective
+
+Introduce a new enemy type that creates directional pressure through confetti spray attacks.
+
+### Requirements
+
+* Create a new enemy type: **Confetti Sprayer**
+
+* Make it visually distinct from balloons and piñatas
+
+* Suggested visual traits:
+
+  * party cannon / cone / tube-like body
+  * brighter accent colors
+  * readable facing direction
+
+* Integrate into existing enemy and spawn systems
+
+### Acceptance Criteria
+
+* Confetti Sprayers spawn correctly
+* They are clearly distinguishable from other enemy types
+* Their orientation or facing direction is readable during gameplay
+
+---
+
+## Task 66 – Sprayer Movement & Positioning Behavior
+
+**Status:** DONE
+
+### Objective
+
+Give Confetti Sprayers movement that supports their attack role.
+
+### Requirements
+
+* Implement movement behavior that is different from standard balloons
+
+* Suggested behavior:
+
+  * slow drift
+  * short repositioning movement
+  * partial tracking toward player without full chase
+
+* Sprayers should create space for attacks rather than constantly collide with player
+
+* Avoid overly erratic motion
+
+### Acceptance Criteria
+
+* Sprayers move in a stable and readable way
+* Their movement supports attack setup
+* They feel different from chase-focused enemies
+
+---
+
+## Task 67 – Confetti Spray Attack System
+
+**Status:** DONE
+
+### Objective
+
+Allow Confetti Sprayers to fire directional confetti bursts.
+
+### Requirements
+
+* Add a spray attack that emits particles or projectiles in:
+
+  * a cone
+  * a short arc
+  * or a directional line
+
+* Attack should:
+
+  * trigger on timer or cooldown
+  * respect enemy facing direction
+  * have visible startup or tell before firing
+
+* Keep implementation lightweight and readable
+
+### Acceptance Criteria
+
+* Sprayers fire confetti attacks reliably
+* Attack direction is understandable to the player
+* Startup and release feel fair and visible
+
+---
+
+## Task 68 – Confetti Spray Hazard Interaction
+
+**Status:** DONE
+
+### Objective
+
+Define how confetti spray affects gameplay and player danger.
+
+### Requirements
+
+* Determine how spray causes pressure, such as:
+
+  * direct player damage
+  * temporary hazard zone
+  * short-lived damaging particles
+
+* Add collision or overlap handling between spray effect and player
+
+* Ensure spray lifetime is limited and cleaned up correctly
+
+### Acceptance Criteria
+
+* Spray creates a meaningful gameplay threat
+* Hazard behavior is consistent and fair
+* Spray effects do not linger incorrectly after expiration
+
+---
+
+## Task 69 – Telegraphing, Cooldowns, and Fairness
+
+**Status:** DONE
+
+### Objective
+
+Make Confetti Sprayer attacks readable and avoid cheap hits.
+
+### Requirements
+
+* Add telegraphing before spray attack, such as:
+
+  * brief pause
+  * body flash
+  * facing lock
+  * charge animation or color change
+
+* Add attack cooldown between sprays
+
+* Prevent overlapping attack spam from a single enemy
+
+### Acceptance Criteria
+
+* Player can recognize when a spray attack is about to happen
+* Confetti Sprayers feel dangerous but fair
+* Attack cadence is readable and tunable
+
+---
+
+## Task 70 – Spawn Integration & Difficulty Scaling
+
+**Status:** DONE
+
+### Objective
+
+Integrate Confetti Sprayers into progression, tiers, and level flavors.
+
+### Requirements
+
+* Add Confetti Sprayers to the spawn pool
+
+* Control when they appear:
+
+  * rare in early levels
+  * more common later
+  * adjustable by flavor/tier
+
+* Ensure only newly spawned sprayers reflect new level/tier values
+
+* Support mixed-tier progression with existing spawn rules
+
+### Acceptance Criteria
+
+* Sprayers appear at appropriate stages of progression
+* Their frequency scales without overwhelming the player
+* Spawn behavior remains consistent with current tier system
+
+---
+
+## Task 71 – Flavor Integration for Confetti Sprayers
+
+**Status:** DONE
+
+### Objective
+
+Make Confetti Sprayers interact meaningfully with level flavor rules.
+
+### Requirements
+
+* Define how sprayers behave under different level flavors, for example:
+
+  * **Standard**: balanced spray timing
+  * **Swarm**: fewer sprayers, lighter spray pressure
+  * **Hunters**: more directed, accurate spray behavior
+  * **Storm**: denser bursts or faster cooldowns
+
+* Keep flavor modifications data-driven and easy to tune
+
+### Acceptance Criteria
+
+* Sprayers feel different across flavors without becoming unpredictable
+* Flavor-specific behavior is noticeable in gameplay
+* Balance remains fair and readable
+
+---
+
+## Task 72 – Confetti Sprayer Visual & Audio Feedback
+
+**Status:** DONE
+
+### Objective
+
+Improve clarity and satisfaction of Confetti Sprayer interactions.
+
+### Requirements
+
+* Add visual feedback for:
+
+  * spray charge-up
+  * spray release
+  * taking damage
+  * destruction
+
+* Add audio hooks if audio system exists:
+
+  * spray burst sound
+  * charge-up sound
+  * destruction sound
+
+* Keep effects lightweight and performance-friendly
+
+### Acceptance Criteria
+
+* Sprayer attacks are easier to read
+* Destroying a sprayer feels satisfying
+* Feedback improves clarity without clutter
+
+---
+
+## Task 73 – Confetti Sprayer Balance & Playtest Pass
+
+**Status:** DONE
+
+### Objective
+
+Tune Confetti Sprayers so they add spatial challenge without dominating gameplay.
+
+### Requirements
+
+* Tune:
+
+  * movement speed
+  * attack frequency
+  * spray width
+  * spray lifetime
+  * spawn frequency
+
+* Validate interaction with:
+
+  * balloons
+  * piñatas
+  * bosses
+  * level transitions
+  * mixed-tier spawns
+
+* Ensure multiple sprayers on screen remain manageable
+
+### Acceptance Criteria
+
+* Sprayers add a new tactical challenge
+* They do not create unavoidable damage situations
+* Gameplay remains fast, readable, and fun
+
+
+## Task 74 – Background Rendering System
+
+**Status:** DONE
+
+### Objective
+
+Replace the black screen with a simple, extensible background system.
+
+### Requirements
+
+* Create a background rendering layer
+
+* Support:
+
+  * solid color
+  * gradient (preferred)
+  * optional texture overlay
+
+* Ensure background renders behind all gameplay elements
+
+* Keep implementation lightweight
+
+### Acceptance Criteria
+
+* Game no longer uses a plain black background
+* Background renders consistently without affecting performance
+* System is easy to extend later
+
+---
+
+## Task 75 – Themed Background (Initial Style)
+
+**Status:** DONE
+
+### Objective
+
+Define a visual identity for the game environment.
+
+### Requirements
+
+* Implement a base theme, such as:
+
+  * soft gradient (dark teal → muted blue → dusk tone)
+  * low-contrast palette
+
+* Add subtle variation:
+
+  * noise texture
+  * light color shifts
+
+* Ensure:
+
+  * enemies and projectiles remain highly visible
+  * contrast is preserved
+
+### Acceptance Criteria
+
+* Background has a cohesive visual style
+* Gameplay elements remain clear and readable
+* No visual clutter
+
+---
+
+## Task 76 – Ambient Background Elements
+
+**Status:** DONE
+
+### Objective
+
+Add subtle motion to make the world feel alive.
+
+### Requirements
+
+* Add lightweight ambient elements such as:
+
+  * slow drifting confetti pieces
+  * floating particles
+  * soft shapes or blobs
+
+* Movement should be:
+
+  * slow
+  * non-interactive
+  * low opacity
+
+### Acceptance Criteria
+
+* Background feels dynamic but not distracting
+* Elements do not interfere with gameplay readability
+* Performance remains stable
+
+---
+
+## Task 77 – Depth Layering (Parallax Lite)
+
+**Status:** DONE
+
+### Objective
+
+Create a sense of depth without adding complexity.
+
+### Requirements
+
+* Introduce 2–3 background layers:
+
+  * base layer (static)
+  * mid layer (slow movement)
+  * foreground ambient layer (slightly faster)
+
+* Optional:
+
+  * subtle parallax based on player movement
+
+* Keep math simple and efficient
+
+### Acceptance Criteria
+
+* Scene has a sense of depth
+* Movement feels smooth and subtle
+* No impact on gameplay performance
+
+---
+
+## Task 78 – Level Flavor Visual Integration
+
+**Status:** DONE
+
+### Objective
+
+Tie environment visuals to level flavor system.
+
+### Requirements
+
+* Adjust background based on level flavor:
+
+  * **Standard** → neutral tones
+  * **Swarm** → slightly brighter, busier particles
+  * **Hunters** → darker, higher contrast
+  * **Storm** → more active background motion or color shifts
+
+* Keep changes subtle, not overwhelming
+
+### Acceptance Criteria
+
+* Player can feel a difference between flavors visually
+* Visual changes reinforce gameplay identity
+* No loss of readability
+
+---
+
+## Task 79 – Background Performance & Cleanup
+
+**Status:** DONE
+
+### Objective
+
+Ensure environment system remains efficient and stable.
+
+### Requirements
+
+* Limit number of background elements
+* Reuse or pool particles where possible
+* Ensure:
+
+  * no memory leaks
+  * no excessive draw calls
+  * no frame drops
+
+### Acceptance Criteria
+
+* Background system has negligible performance impact
+* No buildup of unused objects over time
+* System remains stable during long play sessions
 
 
 # Execution Rules for Agents

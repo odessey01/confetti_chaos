@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from systems.spawn_controller import SpawnController  # noqa: E402
-from enemies import BalloonEnemy, TrackingHazard  # noqa: E402
+from enemies import BalloonEnemy, ConfettiSprayer, PinataEnemy, TrackingHazard  # noqa: E402
 
 
 class DeterministicRng:
@@ -42,7 +42,7 @@ class SpawnControllerValidationTests(unittest.TestCase):
             bounds,
             tracking_spawn_chance=0.3,
             balloon_spawn_chance=0.4,
-            rng=DeterministicRng([0.1, 0.5, 0.9]),
+            rng=DeterministicRng([0.1, 0.5, 0.99]),
         )
         first = controller.create_hazard(speed=220.0)
         second = controller.create_hazard(speed=220.0)
@@ -50,19 +50,24 @@ class SpawnControllerValidationTests(unittest.TestCase):
 
         self.assertIsInstance(first, TrackingHazard)
         self.assertIsInstance(second, BalloonEnemy)
-        self.assertIsInstance(third, BalloonEnemy)
+        self.assertIsInstance(third, PinataEnemy)
         for hazard in (first, second, third):
             self.assertIsNotNone(hazard.spawn_profile)
             self.assertEqual(hazard.spawn_profile["tier"], 1)
             self.assertEqual(hazard.spawn_profile["flavor_tag"], "STANDARD")
             self.assertIn(
                 hazard.spawn_profile["movement_profile"],
-                ("tracking_homing", "balloon_drift"),
+                ("tracking_homing", "sprayer_glide", "balloon_drift", "pinata_heavy_drift"),
             )
 
     def test_spawn_profile_uses_spawn_time_level_and_flavor(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
-        controller = SpawnController(bounds, rng=DeterministicRng([0.9]))
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.7,
+            rng=DeterministicRng([0.5]),
+        )
         hazard = controller.create_hazard_for_spawn(
             tier=4,
             base_speed=240.0,
@@ -70,7 +75,166 @@ class SpawnControllerValidationTests(unittest.TestCase):
         )
         self.assertEqual(hazard.spawn_profile["tier"], 4)
         self.assertEqual(hazard.spawn_profile["flavor_tag"], "HUNTERS")
-        self.assertEqual(hazard.spawn_profile["enemy_kind"], "balloon")
+        self.assertIn(hazard.spawn_profile["enemy_kind"], ("balloon", "confetti_sprayer"))
+
+    def test_create_hazard_can_produce_confetti_sprayer_variant(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.3,
+            balloon_spawn_chance=0.4,
+            rng=DeterministicRng([0.45]),
+        )
+        hazard = controller.create_hazard_for_spawn(
+            tier=14,
+            base_speed=220.0,
+            flavor_tag="HUNTERS",
+        )
+        self.assertIsInstance(hazard, ConfettiSprayer)
+        self.assertEqual(hazard.spawn_profile["enemy_kind"], "confetti_sprayer")
+        self.assertEqual(hazard.spawn_profile["movement_profile"], "sprayer_glide")
+
+    def test_confetti_sprayer_is_rare_in_early_tiers(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.1,
+            balloon_spawn_chance=0.8,
+            rng=DeterministicRng([0.45]),
+        )
+        hazard = controller.create_hazard_for_spawn(
+            tier=2,
+            base_speed=220.0,
+            flavor_tag="STANDARD",
+        )
+        self.assertNotIsInstance(hazard, ConfettiSprayer)
+
+    def test_confetti_sprayer_chance_is_capped_during_boss_context(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.6,
+        )
+        normal = controller._sprayer_target_chance_for_spawn(
+            tier=20,
+            flavor_tag="HUNTERS",
+            boss_override_active=False,
+        )
+        boss = controller._sprayer_target_chance_for_spawn(
+            tier=20,
+            flavor_tag="HUNTERS",
+            boss_override_active=True,
+        )
+        self.assertGreater(normal, boss)
+        self.assertAlmostEqual(boss, controller.BOSS_SPRAYER_CHANCE_CAP, places=6)
+
+    def test_confetti_sprayer_flavor_profiles_change_attack_shape(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.0,
+            balloon_spawn_chance=0.8,
+            rng=DeterministicRng([0.05, 0.05, 0.05]),
+        )
+        hunters = controller.create_hazard_for_spawn(
+            tier=14,
+            base_speed=220.0,
+            flavor_tag="HUNTERS",
+        )
+        storm = controller.create_hazard_for_spawn(
+            tier=14,
+            base_speed=220.0,
+            flavor_tag="STORM",
+        )
+        self.assertIsInstance(hunters, ConfettiSprayer)
+        self.assertIsInstance(storm, ConfettiSprayer)
+        self.assertLess(hunters.spawn_profile["spray_angle"], storm.spawn_profile["spray_angle"])
+        self.assertLess(hunters.spawn_profile["spray_cooldown"], 2.0)
+        self.assertGreater(storm.spawn_profile["spray_projectile_count"], hunters.spawn_profile["spray_projectile_count"])
+
+    def test_pinata_spawn_profile_is_slower_and_distinct(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.2,
+            rng=DeterministicRng([0.99]),
+        )
+        hazard = controller.create_hazard_for_spawn(
+            tier=3,
+            base_speed=240.0,
+            flavor_tag="STANDARD",
+        )
+        self.assertIsInstance(hazard, PinataEnemy)
+        self.assertEqual(hazard.spawn_profile["enemy_kind"], "pinata")
+        self.assertEqual(hazard.spawn_profile["movement_profile"], "pinata_heavy_drift")
+        self.assertLess(float(hazard.spawn_profile["speed"]), 240.0 * 0.75)
+
+    def test_pinata_spawn_share_increases_with_tier(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.5,
+            balloon_spawn_chance=0.4,
+        )
+        low_tracking, low_balloon, low_pinata = controller._resolve_hazard_mix_for_spawn(
+            tier=1,
+            tracking_chance=0.5,
+            boss_override_active=False,
+        )
+        high_tracking, high_balloon, high_pinata = controller._resolve_hazard_mix_for_spawn(
+            tier=12,
+            tracking_chance=0.5,
+            boss_override_active=False,
+        )
+        self.assertAlmostEqual(low_tracking + low_balloon + low_pinata, 1.0, places=6)
+        self.assertAlmostEqual(high_tracking + high_balloon + high_pinata, 1.0, places=6)
+        self.assertLess(low_pinata, high_pinata)
+        self.assertAlmostEqual(low_pinata, controller.MIN_PINATA_CHANCE, places=6)
+        self.assertAlmostEqual(high_pinata, controller.MAX_PINATA_CHANCE, places=6)
+
+    def test_boss_context_caps_pinata_spawn_share(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.6,
+        )
+        _, _, normal_pinata = controller._resolve_hazard_mix_for_spawn(
+            tier=20,
+            tracking_chance=0.2,
+            boss_override_active=False,
+        )
+        _, _, boss_pinata = controller._resolve_hazard_mix_for_spawn(
+            tier=20,
+            tracking_chance=0.2,
+            boss_override_active=True,
+        )
+        self.assertGreater(normal_pinata, boss_pinata)
+        self.assertAlmostEqual(boss_pinata, controller.BOSS_PINATA_CHANCE_CAP, places=6)
+
+    def test_pinata_tier_variants_scale_health_and_rewards(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.0,
+            balloon_spawn_chance=0.0,
+            rng=DeterministicRng([0.99, 0.99, 0.99]),
+        )
+        low = controller.create_hazard_for_spawn(tier=2, base_speed=240.0, flavor_tag="STANDARD")
+        mid = controller.create_hazard_for_spawn(tier=6, base_speed=240.0, flavor_tag="STANDARD")
+        high = controller.create_hazard_for_spawn(tier=10, base_speed=240.0, flavor_tag="STANDARD")
+        self.assertIsInstance(low, PinataEnemy)
+        self.assertIsInstance(mid, PinataEnemy)
+        self.assertIsInstance(high, PinataEnemy)
+        self.assertEqual(low.spawn_profile["health"], 3)
+        self.assertEqual(mid.spawn_profile["health"], 4)
+        self.assertEqual(high.spawn_profile["health"], 5)
+        self.assertEqual(low.spawn_profile["mini_spawn_count"], 0)
+        self.assertEqual(mid.spawn_profile["mini_spawn_count"], 1)
+        self.assertEqual(high.spawn_profile["mini_spawn_count"], 2)
+        self.assertLess(low.spawn_profile["break_confetti_count"], high.spawn_profile["break_confetti_count"])
 
     def test_select_spawn_tier_returns_mixed_pool_for_mid_game(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
