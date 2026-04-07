@@ -13,7 +13,15 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from enemies import BalloonEnemy, BossBalloon, ConfettiSpray, ConfettiSprayer, PinataEnemy, TrackingHazard  # noqa: E402
+from enemies import (  # noqa: E402
+    BalloonEnemy,
+    BossBalloon,
+    ConfettiSpray,
+    ConfettiSprayer,
+    PinataEnemy,
+    StreamerSnake,
+    TrackingHazard,
+)
 from player.projectile import Projectile  # noqa: E402
 from systems.game_session import GameSession  # noqa: E402
 from systems.spawn_controller import SpawnController  # noqa: E402
@@ -501,3 +509,159 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         session.start_new_run(start_level=-5)
         self.assertEqual(session.current_level, MIN_START_LEVEL)
         self.assertEqual(clamp_selected_start_level(0), MIN_START_LEVEL)
+
+    def test_streamer_snake_chase_closes_distance_to_player(self) -> None:
+        snake = StreamerSnake(speed=150.0, segment_count=7)
+        snake.position = pygame.Vector2(120.0, 120.0)
+        snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        target = pygame.Vector2(960.0, 560.0)
+        before = pygame.Vector2(snake.rect.center).distance_to(target)
+        for _ in range(24):
+            snake.update(0.08, target)
+        after = pygame.Vector2(snake.rect.center).distance_to(target)
+        self.assertLess(after, before)
+
+    def test_streamer_snake_turning_is_smooth_not_instant_snap(self) -> None:
+        snake = StreamerSnake(speed=150.0, segment_count=6)
+        snake.position = pygame.Vector2(420.0, 280.0)
+        snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        target = pygame.Vector2(220.0, 280.0)
+        before = snake.velocity.normalize()
+        snake.update(0.03, target)
+        after = snake.velocity.normalize()
+        self.assertGreater(before.dot(after), -0.95)
+
+    def test_streamer_snake_segments_follow_head_with_spacing(self) -> None:
+        snake = StreamerSnake(speed=140.0, segment_count=8, segment_spacing=16.0)
+        snake.position = pygame.Vector2(240.0, 200.0)
+        snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        for _ in range(30):
+            snake.update(0.06, pygame.Vector2(940.0, 360.0))
+
+        centers = snake.segment_centers()
+        self.assertEqual(len(centers), snake.segment_count)
+        self.assertGreaterEqual(len(centers), 2)
+        for idx in range(len(centers) - 1):
+            distance = centers[idx].distance_to(centers[idx + 1])
+            self.assertLessEqual(distance, snake.segment_spacing * 1.25)
+            self.assertGreaterEqual(distance, snake.segment_spacing * 0.45)
+
+    def test_streamer_snake_body_collision_with_player_triggers_game_over(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        snake = StreamerSnake(speed=130.0, segment_count=6, segment_spacing=16.0)
+        player_center = pygame.Vector2(session.player.rect.center)
+        snake.position = pygame.Vector2(
+            player_center.x + 96.0 - (snake.size / 2),
+            player_center.y - (snake.size / 2),
+        )
+        snake.velocity = pygame.Vector2(0.0, 0.0)
+        snake._head_center = pygame.Vector2(snake.rect.center)
+        snake._desired_velocity = pygame.Vector2(0.0, 0.0)
+        snake.retarget_interval = 999.0
+        snake.retarget_timer = 999.0
+        snake._path_points = [
+            pygame.Vector2(snake._head_center.x - (16.0 * idx), snake._head_center.y)
+            for idx in range(8)
+        ]
+        session.hazards = [snake]
+        collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
+        self.assertTrue(collided)
+
+    def test_streamer_snake_collision_path_returns_single_game_over_signal(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        snake = StreamerSnake(speed=130.0, segment_count=5, segment_spacing=16.0)
+        snake.position = pygame.Vector2(session.player.rect.x, session.player.rect.y)
+        snake.velocity = pygame.Vector2(0.0, 0.0)
+        snake._head_center = pygame.Vector2(snake.rect.center)
+        player_center = pygame.Vector2(session.player.rect.center)
+        snake._segment_centers = [pygame.Vector2(player_center) for _ in range(5)]
+        session.hazards = [snake]
+        collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
+        self.assertIs(collided, True)
+
+    def test_streamer_snake_tail_history_stays_bounded_over_time(self) -> None:
+        snake = StreamerSnake(speed=145.0, segment_count=8, segment_spacing=18.0)
+        snake.position = pygame.Vector2(120.0, 100.0)
+        snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        for _ in range(240):
+            snake.update(0.05, pygame.Vector2(1100.0, 620.0))
+
+        accumulated = 0.0
+        path = snake._path_points
+        for idx in range(len(path) - 1):
+            accumulated += path[idx].distance_to(path[idx + 1])
+        self.assertLessEqual(accumulated, snake.max_tail_length + snake.segment_spacing)
+
+    def test_streamer_snake_tail_segment_count_is_fixed(self) -> None:
+        snake = StreamerSnake(speed=145.0, segment_count=9, segment_spacing=14.0)
+        snake.position = pygame.Vector2(260.0, 220.0)
+        snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        for _ in range(120):
+            snake.update(0.06, pygame.Vector2(980.0, 300.0))
+            self.assertEqual(len(snake.segment_centers()), 9)
+
+    def test_streamer_snake_tracker_variant_closes_faster_than_wanderer(self) -> None:
+        target = pygame.Vector2(980.0, 500.0)
+        wanderer = StreamerSnake(speed=150.0, variant_id="wanderer")
+        tracker = StreamerSnake(speed=150.0, variant_id="tracker")
+        for snake in (wanderer, tracker):
+            snake.position = pygame.Vector2(120.0, 120.0)
+            snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+        for _ in range(20):
+            wanderer.update(0.08, target)
+            tracker.update(0.08, target)
+        wanderer_dist = pygame.Vector2(wanderer.rect.center).distance_to(target)
+        tracker_dist = pygame.Vector2(tracker.rect.center).distance_to(target)
+        self.assertLess(tracker_dist, wanderer_dist)
+
+    def test_streamer_snake_looper_variant_changes_heading_curvature(self) -> None:
+        target = pygame.Vector2(980.0, 500.0)
+        tracker = StreamerSnake(speed=150.0, variant_id="tracker")
+        looper = StreamerSnake(speed=150.0, variant_id="looper")
+        for snake in (tracker, looper):
+            snake.position = pygame.Vector2(240.0, 240.0)
+            snake.velocity = pygame.Vector2(1.0, 0.0) * snake.base_speed
+            snake.update(0.1, target)
+        tracker_heading = tracker.velocity.normalize()
+        looper_heading = looper.velocity.normalize()
+        self.assertLess(tracker_heading.dot(looper_heading), 0.995)
+
+    def test_streamer_snake_destruction_spawns_enhanced_confetti_feedback(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        snake = StreamerSnake(speed=140.0, segment_count=7)
+        snake.position = pygame.Vector2(300.0, 260.0)
+        snake.velocity = pygame.Vector2(0.0, 0.0)
+        snake.apply_spawn_profile(
+            {
+                "tier": 8,
+                "speed": 140.0,
+                "health": 1,
+                "movement_profile": "streamer_tracker",
+                "flavor_tag": "HUNTERS",
+                "enemy_kind": "streamer_snake",
+                "snake_variant_id": "tracker",
+                "snake_segment_count": 7,
+                "snake_segment_spacing": 16.0,
+            }
+        )
+        session.hazards = [snake]
+        session.projectiles = [
+            Projectile(
+                position=pygame.Vector2(snake.rect.center),
+                direction=pygame.Vector2(1.0, 0.0),
+                speed=0.0,
+                lifetime=1.0,
+                size=8,
+            )
+        ]
+        session._check_projectile_collisions()
+        self.assertGreaterEqual(len(session.confetti.particles), 13)
+
+    def test_streamer_snake_body_collision_radius_is_forgiving(self) -> None:
+        snake = StreamerSnake(speed=140.0, segment_count=5, segment_spacing=16.0)
+        snake.position = pygame.Vector2(900.0, 620.0)
+        snake._head_center = pygame.Vector2(snake.rect.center)
+        center = pygame.Vector2(200.0, 200.0)
+        snake._segment_centers = [pygame.Vector2(center) for _ in range(5)]
+        probe = pygame.Rect(int(center.x + 8), int(center.y), 1, 1)
+        self.assertFalse(snake.collides_with_rect(probe))

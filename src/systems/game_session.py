@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pygame
 
-from enemies import BalloonEnemy, BossBalloon, ConfettiSpray, ConfettiSprayer, Hazard, PinataEnemy
+from enemies import (
+    BalloonEnemy,
+    BossBalloon,
+    ConfettiSpray,
+    ConfettiSprayer,
+    Hazard,
+    PinataEnemy,
+    StreamerSnake,
+)
 from player import Player
 from player.projectile import Projectile
 from .confetti import Confetti
@@ -35,6 +43,7 @@ class GameSession:
         "balloon": 12,
         "mini_balloon": 10,
         "pinata": 24,
+        "streamer_snake": 20,
         "confetti_sprayer": 28,
         "boss_balloon": 220,
     }
@@ -303,7 +312,10 @@ class GameSession:
             if hazard.is_out_of_bounds(self.bounds):
                 self.spawn_controller.configure_hazard(hazard, player_center)
                 self._spawn_pulse_centers.append(hazard.rect.center)
-            if self.player.rect.colliderect(hazard.rect):
+            if isinstance(hazard, StreamerSnake):
+                if hazard.collides_with_rect(self.player.rect):
+                    return True
+            elif self.player.rect.colliderect(hazard.rect):
                 return True
 
         if requested_burst_spawns > 0:
@@ -475,6 +487,15 @@ class GameSession:
                             self._pending_balloon_pop_sfx_count += 1
                             self._pending_sprayer_destroy_sfx_count += 1
                             self._spawn_sprayer_destroy_confetti(center)
+                    elif isinstance(hazard, StreamerSnake):
+                        self._pending_balloon_hit_sfx_count += 1
+                        if hazard_idx not in hazards_to_remove:
+                            hazards_to_remove.append(hazard_idx)
+                            center = pygame.Vector2(hazard.rect.center)
+                            hazard_kill_positions.append(center)
+                            hazard_kill_kinds.append("streamer_snake")
+                            self._pending_balloon_pop_sfx_count += 1
+                            self._spawn_streamer_snake_break_confetti(center)
                     else:
                         # Normal hazard - instant kill
                         self._pending_balloon_hit_sfx_count += 1
@@ -555,6 +576,17 @@ class GameSession:
             speed_max=300.0,
             lifetime_min=0.5,
             lifetime_max=0.85,
+        )
+
+    def _spawn_streamer_snake_break_confetti(self, center: pygame.Vector2) -> None:
+        """Spawn a colorful ribbon-like burst on streamer snake destruction."""
+        self.confetti.spawn_burst(
+            center,
+            count=13 + self._confetti_bonus_count(),
+            speed_min=170.0,
+            speed_max=330.0,
+            lifetime_min=0.55,
+            lifetime_max=0.9,
         )
 
     def _confetti_bonus_count(self) -> int:

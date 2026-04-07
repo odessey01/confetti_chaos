@@ -6,6 +6,7 @@ from .confetti_spray import ConfettiSpray
 from .confetti_sprayer import ConfettiSprayer
 from .hazard import Hazard
 from .pinata_enemy import PinataEnemy
+from .streamer_snake import StreamerSnake
 from .tracking_hazard import TrackingHazard
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "ConfettiSprayer",
     "Hazard",
     "PinataEnemy",
+    "StreamerSnake",
     "TrackingHazard",
 ]

@@ -1714,6 +1714,279 @@ Tune the first progression loop so leveling up feels rewarding and well-paced.
 * Upgrades create noticeable power growth without trivializing the run
 * Progression pacing feels appropriate for a survivor-style game
 
+## Task 91 – Streamer Snake Enemy (Base Implementation)
+
+**Status:** DONE
+
+### Objective
+
+Introduce a ribbon-like enemy composed of a moving head and trailing body segments.
+
+### Requirements
+
+* Create a new enemy type: **Streamer Snake**
+
+* Structure:
+
+  * head (primary entity)
+  * trailing segments (linked or generated positions)
+
+* Visually distinct:
+
+  * ribbon/streamer appearance
+  * continuous or segmented body
+  * bright, flowing colors
+
+* Integrate into existing enemy system
+
+### Acceptance Criteria
+
+* Streamer Snake spawns correctly
+* Head and body are visually connected
+* Enemy is clearly distinguishable from other types
+
+---
+
+## Task 92 – Snake Movement & Path Tracking
+
+**Status:** DONE
+
+### Objective
+
+Create smooth, flowing movement for the snake head and trailing segments.
+
+### Requirements
+
+* Head movement:
+
+  * similar to balloon drift OR light chase behavior
+  * smooth directional changes (no snapping)
+
+* Body behavior:
+
+  * follow previous positions of the head
+  * maintain spacing between segments
+  * create a natural trailing curve
+
+* Avoid jitter and overlapping segments
+
+### Acceptance Criteria
+
+* Snake movement appears fluid and continuous
+* Body follows head naturally
+* Movement feels distinct from other enemies
+
+---
+
+## Task 93 – Body Collision & Hazard Behavior
+
+**Status:** DONE
+
+### Objective
+
+Make the snake body a meaningful gameplay hazard.
+
+### Requirements
+
+* Define collision behavior:
+
+  * player collision with head or body causes damage
+
+* Ensure:
+
+  * consistent hit detection across segments
+  * no duplicate damage stacking per frame
+
+* Optional:
+
+  * head deals more damage than body (configurable)
+
+### Acceptance Criteria
+
+* Snake body acts as a continuous hazard
+* Collisions are accurate and fair
+* Player interaction is consistent and readable
+
+---
+
+## Task 94 – Tail Persistence & Fade System
+
+**Status:** DONE
+
+### Objective
+
+Control how long the snake trail remains active.
+
+### Requirements
+
+* Define tail behavior:
+
+  * fixed number of segments OR
+  * time-based fade-out
+
+* Ensure:
+
+  * tail does not grow indefinitely
+  * old segments are removed cleanly
+
+* Optional:
+
+  * slight fade or shrink effect on older segments
+
+### Acceptance Criteria
+
+* Tail length remains controlled and predictable
+* Old segments are removed without artifacts
+* Visual trail remains readable
+
+---
+
+## Task 95 – Snake Behavior Variants
+
+**Status:** DONE
+
+### Objective
+
+Add variation to streamer snake behavior.
+
+### Requirements
+
+Implement at least one variant:
+
+* **Wanderer**: slow drifting, long trailing tail
+
+* **Tracker**: lightly follows player
+
+* **Looper**: moves in curved or circular patterns
+
+* Keep behavior simple and configurable
+
+### Acceptance Criteria
+
+* Snake variants feel different in gameplay
+* Behavior differences are noticeable but readable
+* Variants integrate with existing systems
+
+---
+
+## Task 96 – Spawn Integration & Tier Scaling
+
+**Status:** DONE
+
+### Objective
+
+Integrate streamer snakes into progression and spawn systems.
+
+### Requirements
+
+* Add snakes to spawn pool:
+
+  * introduced mid-progression
+  * scaled frequency based on level/tier
+
+* Support:
+
+  * mixed-tier spawning
+  * spawn-time attribute assignment
+
+* Ensure only newly spawned snakes reflect new level/tier values
+
+### Acceptance Criteria
+
+* Snakes appear at appropriate difficulty stages
+* Spawn frequency is balanced
+* Integration does not disrupt existing enemy ecosystem
+
+---
+
+## Task 97 – Flavor System Integration
+
+**Status:** DONE
+
+### Objective
+
+Make streamer snakes interact with level flavors.
+
+### Requirements
+
+* Define behavior adjustments per flavor:
+
+  * **Standard**: balanced movement
+  * **Swarm**: shorter snakes, more instances
+  * **Hunters**: tighter tracking behavior
+  * **Storm**: faster movement, denser trails
+
+* Keep changes data-driven and tunable
+
+### Acceptance Criteria
+
+* Snakes behave differently across flavors
+* Changes are noticeable but not chaotic
+* Balance remains fair
+
+---
+
+## Task 98 – Visual & Feedback Polish
+
+**Status:** DONE
+
+### Objective
+
+Enhance readability and visual appeal of streamer snakes.
+
+### Requirements
+
+* Add:
+
+  * subtle color gradients along the body
+  * motion smoothing or easing
+  * destruction feedback (confetti burst or ribbon break)
+
+* Ensure strong contrast against background
+
+### Acceptance Criteria
+
+* Snake visuals are clear and appealing
+* Movement is easy to track visually
+* Destruction feels satisfying
+
+---
+
+## Task 99 – Balance & Playtest Pass
+
+**Status:** DONE
+
+### Objective
+
+Ensure streamer snakes add meaningful challenge without overwhelming gameplay.
+
+### Requirements
+
+* Tune:
+
+  * movement speed
+  * tail length
+  * spawn frequency
+  * collision behavior
+
+* Validate interactions with:
+
+  * balloons
+  * piñatas
+  * sprayers
+  * bosses
+
+* Ensure:
+
+  * no unavoidable traps
+  * player always has escape paths
+
+### Acceptance Criteria
+
+* Snakes add spatial challenge and pathing decisions
+* Difficulty remains fair and readable
+* Gameplay remains fast and fluid
+
 
 # Execution Rules for Agents
 
