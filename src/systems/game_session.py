@@ -9,6 +9,7 @@ from player import Player
 from player.projectile import Projectile
 from .confetti import Confetti
 from .level_config import LevelConfig, get_level_config, LEVEL_1_SPAWN_RATE
+from .settings import clamp_selected_start_level
 from .spawn_controller import SpawnController
 
 
@@ -45,7 +46,7 @@ class GameSession:
     def current_level(self) -> int:
         level_from_time = int(self.elapsed_time / self.LEVEL_UP_INTERVAL) + 1
         level_from_points = int(self.score_value / self.POINTS_PER_LEVEL) + 1
-        return max(level_from_time, level_from_points)
+        return max(level_from_time, level_from_points) + self._start_level_offset
 
     @property
     def current_level_config(self) -> LevelConfig:
@@ -56,7 +57,9 @@ class GameSession:
         progress = min(self.elapsed_time / self.RAMP_SECONDS, 1.0)
         return 1.0 + progress * (self.MAX_SPEED_MULTIPLIER - 1.0)
 
-    def start_new_run(self) -> None:
+    def start_new_run(self, start_level: int = 1) -> None:
+        selected_level = clamp_selected_start_level(start_level)
+        self._start_level_offset = selected_level - 1
         self.player = self._create_player()
         self.spawn_controller.reset()
         self.projectiles = []
@@ -128,10 +131,24 @@ class GameSession:
                 and self._boss_defeated_level != self.current_level
             ):
                 # Spawn boss
-                boss = self.spawn_controller.create_boss_hazard(speed=self._spawn_speed())
-                boss.rect.center = self.player.rect.center  # Spawn at player position
+                boss_tier = self.spawn_controller.select_spawn_tier(level_config.level)
+                boss_tier_config = get_level_config(boss_tier)
+                boss = self.spawn_controller.create_boss_hazard_for_spawn(
+                    tier=boss_tier,
+                    base_speed=boss_tier_config.enemy_speed * self.difficulty_multiplier,
+                    flavor_tag=boss_tier_config.flavor.name,
+                )
+                self.spawn_controller.configure_hazard(boss, player_center)
+                self._capture_spawn_snapshot(boss, level_config)
                 self.hazards.append(boss)
                 self._spawn_pulse_centers.append(boss.rect.center)
+                self.spawn_controller.record_spawn_event(
+                    current_level=level_config.level,
+                    active_flavor=level_config.flavor.name,
+                    spawn_tier=boss_tier,
+                    enemy_kind="boss_balloon",
+                    boss_override_active=True,
+                )
                 self._boss_active = True
         
         # Spawn and update hazards with level-based scaling
@@ -156,10 +173,25 @@ class GameSession:
         for _ in range(spawn_count):
             if len(self.hazards) >= max_enemies:
                 break
-            hazard = self.spawn_controller.create_hazard(speed=self._spawn_speed())
+            spawn_tier = self.spawn_controller.select_spawn_tier(level_config.level)
+            spawn_tier_config = get_level_config(spawn_tier)
+            hazard = self.spawn_controller.create_hazard_for_spawn_with_chances(
+                tier=spawn_tier,
+                base_speed=spawn_tier_config.enemy_speed * self.difficulty_multiplier,
+                flavor_tag=spawn_tier_config.flavor.name,
+                tracking_chance=spawn_tier_config.hazard_mix.tracking_hazard_chance,
+            )
             self.spawn_controller.configure_hazard(hazard, player_center)
+            self._capture_spawn_snapshot(hazard, level_config)
             self.hazards.append(hazard)
             self._spawn_pulse_centers.append(hazard.rect.center)
+            self.spawn_controller.record_spawn_event(
+                current_level=level_config.level,
+                active_flavor=level_config.flavor.name,
+                spawn_tier=spawn_tier,
+                enemy_kind=str(hazard.spawn_profile["enemy_kind"]),
+                boss_override_active=self._boss_active,
+            )
 
         for hazard in self.hazards:
             hazard.update(delta_seconds, player_center)
@@ -267,6 +299,15 @@ class GameSession:
     def clear_boss_victory_sound_pending(self) -> None:
         self._boss_victory_sound_pending = False
 
+    def spawn_telemetry_snapshot(self, limit: int = 60) -> dict[str, object]:
+        current = self.current_level_config
+        return {
+            "current_level": self.current_level,
+            "active_flavor": current.flavor.name,
+            "boss_override_active": self._boss_active,
+            "spawn_summary": self.spawn_controller.spawn_telemetry_summary(limit=limit),
+        }
+
     def draw_playing(self, surface: pygame.Surface) -> None:
         for hazard in self.hazards:
             hazard.draw(surface)
@@ -283,11 +324,31 @@ class GameSession:
 
     def _create_initial_hazards(self, player: Player) -> list[Hazard]:
         spawn_speed = self._spawn_speed()
+        level_config = self.current_level_config
         hazards = [
-            self.spawn_controller.create_hazard(speed=spawn_speed)
+            self.spawn_controller.create_hazard_for_spawn_with_chances(
+                tier=self.spawn_controller.select_spawn_tier(level_config.level),
+                base_speed=spawn_speed,
+                flavor_tag=level_config.flavor.name,
+                tracking_chance=level_config.hazard_mix.tracking_hazard_chance,
+            )
             for _ in range(self.spawn_controller.initial_hazards)
         ]
         target = pygame.Vector2(player.rect.center)
         for hazard in hazards:
             self.spawn_controller.configure_hazard(hazard, target)
+            self._capture_spawn_snapshot(hazard, level_config)
+            self.spawn_controller.record_spawn_event(
+                current_level=level_config.level,
+                active_flavor=level_config.flavor.name,
+                spawn_tier=int(hazard.spawn_profile["tier"]),
+                enemy_kind=str(hazard.spawn_profile["enemy_kind"]),
+                boss_override_active=False,
+            )
         return hazards
+
+    def _capture_spawn_snapshot(self, hazard: Hazard, level_config: LevelConfig) -> None:
+        hazard.capture_spawn_snapshot(
+            level=level_config.level,
+            flavor=level_config.flavor.name,
+        )

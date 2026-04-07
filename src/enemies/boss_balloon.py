@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pygame
 
 from .hazard import Hazard
@@ -70,3 +72,9 @@ class BossBalloon(Hazard):
         # Health bar
         health_width = (self.health / 3) * bar_width
         pygame.draw.rect(surface, (255, 0, 0), (bar_x, bar_y, health_width, bar_height))
+
+    def _behavior_snapshot(self) -> dict[str, Any]:
+        return {
+            "charge_duration": self.charge_duration,
+            "charge_speed_multiplier": self.charge_speed_multiplier,
+        }

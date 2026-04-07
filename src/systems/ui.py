@@ -44,7 +44,16 @@ class UiRenderer:
         text_rect = text_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2))
         surface.blit(text_surface, text_rect)
 
-    def draw_menu(self, surface: pygame.Surface, title: str, high_score: int) -> None:
+    def draw_menu(
+        self,
+        surface: pygame.Surface,
+        title: str,
+        high_score: int,
+        options: tuple[str, ...],
+        selected_index: int,
+        music_enabled: bool,
+        selected_start_level: int,
+    ) -> None:
         center_x = surface.get_width() // 2
         center_y = surface.get_height() // 2
 
@@ -52,41 +61,60 @@ class UiRenderer:
         title_rect = title_surface.get_rect(center=(center_x, center_y - 120))
         surface.blit(title_surface, title_rect)
 
-        start_surface = self._prompt_font.render(
-            "Press Enter/Space or Gamepad A/Start",
-            True,
-            self._prompt_color,
-        )
-        start_rect = start_surface.get_rect(center=(center_x, center_y - 20))
-        surface.blit(start_surface, start_rect)
-
-        quit_surface = self._prompt_font.render(
-            "Press Q/Esc or Gamepad Back to Quit",
-            True,
-            self._prompt_color,
-        )
-        quit_rect = quit_surface.get_rect(center=(center_x, center_y + 30))
-        surface.blit(quit_surface, quit_rect)
+        for idx, option in enumerate(options):
+            label = option
+            if option == "Toggle Music":
+                label = f"Toggle Music: {'On' if music_enabled else 'Off'}"
+            elif option == "Level Select":
+                label = f"Level Select: {selected_start_level}"
+            color = (255, 235, 140) if idx == selected_index else self._prompt_color
+            option_surface = self._prompt_font.render(label, True, color)
+            option_rect = option_surface.get_rect(center=(center_x, center_y - 25 + (idx * 40)))
+            surface.blit(option_surface, option_rect)
 
         high_score_surface = self._prompt_font.render(
             f"High Score: {high_score}",
             True,
             self._prompt_color,
         )
-        high_score_rect = high_score_surface.get_rect(center=(center_x, center_y + 90))
+        high_score_rect = high_score_surface.get_rect(center=(center_x, center_y + 150))
         surface.blit(high_score_surface, high_score_rect)
 
-    def draw_paused(self, surface: pygame.Surface, audio_enabled: bool) -> None:
-        pause_surface = self._state_font.render("PAUSED", True, self._state_color)
-        pause_rect = pause_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 20))
-        surface.blit(pause_surface, pause_rect)
-
-        prompt = "Press P/Esc or Gamepad Start/Back to Resume"
-        prompt_surface = self._prompt_font.render(prompt, True, self._prompt_color)
-        prompt_rect = prompt_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 20))
+        prompt_surface = self._prompt_font.render(
+            "Up/Down to Navigate | Enter/A to Confirm",
+            True,
+            self._prompt_color,
+        )
+        prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 195))
         surface.blit(prompt_surface, prompt_rect)
 
-        audio_label = f"Audio: {'On' if audio_enabled else 'Off'} (Press M to Toggle)"
-        audio_surface = self._prompt_font.render(audio_label, True, self._prompt_color)
-        audio_rect = audio_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 60))
-        surface.blit(audio_surface, audio_rect)
+    def draw_paused(
+        self,
+        surface: pygame.Surface,
+        audio_enabled: bool,
+        options: tuple[str, ...],
+        selected_index: int,
+    ) -> None:
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 110))
+        surface.blit(overlay, (0, 0))
+
+        center_x = surface.get_width() // 2
+        center_y = surface.get_height() // 2
+        pause_surface = self._state_font.render("PAUSED", True, self._state_color)
+        pause_rect = pause_surface.get_rect(center=(center_x, center_y - 120))
+        surface.blit(pause_surface, pause_rect)
+
+        for idx, option in enumerate(options):
+            label = option
+            if option == "Toggle Music":
+                label = f"Toggle Music: {'On' if audio_enabled else 'Off'}"
+            color = (255, 235, 140) if idx == selected_index else self._prompt_color
+            option_surface = self._prompt_font.render(label, True, color)
+            option_rect = option_surface.get_rect(center=(center_x, center_y - 30 + (idx * 40)))
+            surface.blit(option_surface, option_rect)
+
+        prompt = "Up/Down to Navigate | Enter/A to Confirm | P/Esc to Resume"
+        prompt_surface = self._prompt_font.render(prompt, True, self._prompt_color)
+        prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 150))
+        surface.blit(prompt_surface, prompt_rect)

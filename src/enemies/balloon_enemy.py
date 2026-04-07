@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from typing import Any
 
 import pygame
 
@@ -54,3 +55,10 @@ class BalloonEnemy(Hazard):
         knot_left = (center[0] - 4, center[1] + radius + 6)
         knot_right = (center[0] + 4, center[1] + radius + 6)
         pygame.draw.polygon(surface, (240, 240, 245), [knot_top, knot_left, knot_right])
+
+    def _behavior_snapshot(self) -> dict[str, Any]:
+        return {
+            "bob_strength": self._bob_strength,
+            "bob_frequency": self._bob_frequency,
+            "phase": self._phase,
+        }

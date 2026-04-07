@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pygame
 
@@ -76,3 +77,13 @@ class TrackingHazard(BalloonEnemy):
                     self._retarget_count += 1
         
         super().update(delta_seconds, target_center)
+
+    def _behavior_snapshot(self) -> dict[str, Any]:
+        snapshot = super()._behavior_snapshot()
+        snapshot.update(
+            {
+                "retarget_interval": self.retarget_interval,
+                "max_retargets": self.max_retargets,
+            }
+        )
+        return snapshot

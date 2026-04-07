@@ -50,6 +50,24 @@ class InputController:
             and event.button == 6
         )
 
+    def is_menu_up(self, event: pygame.event.Event) -> bool:
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key in (pygame.K_UP, pygame.K_w)
+        ) or (
+            event.type == pygame.JOYHATMOTION
+            and event.value[1] > 0
+        )
+
+    def is_menu_down(self, event: pygame.event.Event) -> bool:
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key in (pygame.K_DOWN, pygame.K_s)
+        ) or (
+            event.type == pygame.JOYHATMOTION
+            and event.value[1] < 0
+        )
+
     def is_restart(self, event: pygame.event.Event) -> bool:
         return (
             event.type == pygame.KEYDOWN
@@ -76,6 +94,15 @@ class InputController:
             event.type == pygame.JOYBUTTONDOWN
             and event.button in (0, 1)
         )
+
+    def is_pause_menu_up(self, event: pygame.event.Event) -> bool:
+        return self.is_menu_up(event)
+
+    def is_pause_menu_down(self, event: pygame.event.Event) -> bool:
+        return self.is_menu_down(event)
+
+    def is_pause_menu_confirm(self, event: pygame.event.Event) -> bool:
+        return self.is_menu_confirm(event)
 
     def _refresh_joystick(self) -> None:
         if pygame.joystick.get_count() > 0:
