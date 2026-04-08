@@ -9,7 +9,15 @@ from typing import Protocol
 
 import pygame
 
-from enemies import BalloonEnemy, BossBalloon, ConfettiSprayer, Hazard, PinataEnemy, TrackingHazard
+from enemies import (
+    BalloonEnemy,
+    BossBalloon,
+    ConfettiSprayer,
+    Hazard,
+    PinataEnemy,
+    StreamerSnake,
+    TrackingHazard,
+)
 
 
 class RandomLike(Protocol):
@@ -38,6 +46,9 @@ class EnemySpawnProfile:
     spray_angle: float | None = None
     spray_projectile_count: int | None = None
     spray_projectile_speed: float | None = None
+    snake_variant_id: str | None = None
+    snake_segment_count: int | None = None
+    snake_segment_spacing: float | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +68,14 @@ class SprayerFlavorProfile:
     projectile_speed: float
 
 
+@dataclass(frozen=True)
+class SnakeFlavorProfile:
+    variant_id: str
+    segment_count: int
+    segment_spacing: float
+    speed_multiplier: float
+
+
 class SpawnController:
     MIN_PINATA_CHANCE = 0.04
     MAX_PINATA_CHANCE = 0.26
@@ -68,6 +87,43 @@ class SpawnController:
     SPRAYER_RAMP_START_TIER = 2
     SPRAYER_RAMP_FULL_TIER = 10
     BOSS_SPRAYER_CHANCE_CAP = 0.08
+    MIN_SNAKE_CHANCE = 0.0
+    MAX_SNAKE_CHANCE = 0.16
+    SNAKE_RAMP_START_TIER = 5
+    SNAKE_RAMP_FULL_TIER = 12
+    BOSS_SNAKE_CHANCE_CAP = 0.10
+    SNAKE_FLAVOR_MULTIPLIERS: dict[str, float] = {
+        "STANDARD": 1.0,
+        "SWARM": 1.2,
+        "HUNTERS": 0.95,
+        "STORM": 1.12,
+    }
+    SNAKE_FLAVOR_PROFILES: dict[str, SnakeFlavorProfile] = {
+        "STANDARD": SnakeFlavorProfile(
+            variant_id="wanderer",
+            segment_count=8,
+            segment_spacing=18.0,
+            speed_multiplier=1.0,
+        ),
+        "SWARM": SnakeFlavorProfile(
+            variant_id="wanderer",
+            segment_count=6,
+            segment_spacing=15.0,
+            speed_multiplier=0.94,
+        ),
+        "HUNTERS": SnakeFlavorProfile(
+            variant_id="tracker",
+            segment_count=7,
+            segment_spacing=16.0,
+            speed_multiplier=1.0,
+        ),
+        "STORM": SnakeFlavorProfile(
+            variant_id="looper",
+            segment_count=9,
+            segment_spacing=17.0,
+            speed_multiplier=1.08,
+        ),
+    }
     SPRAYER_FLAVOR_MULTIPLIERS: dict[str, float] = {
         "STANDARD": 1.0,
         "SWARM": 0.75,
@@ -230,6 +286,32 @@ class SpawnController:
             tracking_chance=self.tracking_spawn_chance,
         )
 
+    def create_streamer_snake_for_spawn(
+        self,
+        *,
+        tier: int,
+        base_speed: float,
+        flavor_tag: str,
+        segment_count: int = 7,
+        variant_id: str = "wanderer",
+    ) -> StreamerSnake:
+        resolved_variant = str(variant_id) if str(variant_id) in StreamerSnake.VARIANT_PROFILES else "wanderer"
+        profile = EnemySpawnProfile(
+            tier=tier,
+            speed=base_speed * 0.66,
+            health=1,
+            movement_profile=f"streamer_{resolved_variant}",
+            flavor_tag=flavor_tag,
+            enemy_kind="streamer_snake",
+        )
+        snake = StreamerSnake(
+            speed=profile.speed,
+            segment_count=segment_count,
+            variant_id=resolved_variant,
+        )
+        snake.apply_spawn_profile(self._profile_to_dict(profile))
+        return snake
+
     def create_hazard_for_spawn_with_chances(
         self,
         *,
@@ -251,10 +333,18 @@ class SpawnController:
         )
         sprayer_share = min(balloon_share, max(0.0, sprayer_target))
         balloon_share -= sprayer_share
+        snake_target = self._snake_target_chance_for_spawn(
+            tier=tier,
+            flavor_tag=flavor_tag,
+            boss_override_active=boss_override_active,
+        )
+        snake_share = min(balloon_share, max(0.0, snake_target))
+        balloon_share -= snake_share
         roll = self._rng.random()
         tracking_threshold = tracking_share
         sprayer_threshold = tracking_threshold + sprayer_share
-        balloon_threshold = sprayer_threshold + balloon_share
+        snake_threshold = sprayer_threshold + snake_share
+        balloon_threshold = snake_threshold + balloon_share
         if roll < tracking_threshold:
             profile = EnemySpawnProfile(
                 tier=tier,
@@ -285,6 +375,26 @@ class SpawnController:
                 spray_angle=sprayer_attack.spray_angle,
                 projectile_count=sprayer_attack.projectile_count,
                 projectile_speed=sprayer_attack.projectile_speed,
+            )
+        elif roll < snake_threshold:
+            snake_flavor_profile = self._snake_profile_for_flavor(flavor_tag, tier=tier)
+            snake_variant = snake_flavor_profile.variant_id
+            profile = EnemySpawnProfile(
+                tier=tier,
+                speed=base_speed * 0.62 * snake_flavor_profile.speed_multiplier,
+                health=1,
+                movement_profile=f"streamer_{snake_variant}",
+                flavor_tag=flavor_tag,
+                enemy_kind="streamer_snake",
+                snake_variant_id=snake_variant,
+                snake_segment_count=snake_flavor_profile.segment_count,
+                snake_segment_spacing=snake_flavor_profile.segment_spacing,
+            )
+            hazard = StreamerSnake(
+                speed=profile.speed,
+                segment_count=snake_flavor_profile.segment_count,
+                segment_spacing=snake_flavor_profile.segment_spacing,
+                variant_id=snake_variant,
             )
         elif roll < balloon_threshold:
             profile = EnemySpawnProfile(
@@ -393,6 +503,46 @@ class SpawnController:
             return min(chance, self.BOSS_SPRAYER_CHANCE_CAP)
         return chance
 
+    def _snake_target_chance_for_spawn(
+        self,
+        *,
+        tier: int,
+        flavor_tag: str,
+        boss_override_active: bool,
+    ) -> float:
+        clamped_tier = max(1, int(tier))
+        if clamped_tier < self.SNAKE_RAMP_START_TIER:
+            chance = self.MIN_SNAKE_CHANCE
+        else:
+            tier_span = max(1, self.SNAKE_RAMP_FULL_TIER - self.SNAKE_RAMP_START_TIER)
+            progress = min(
+                max((clamped_tier - self.SNAKE_RAMP_START_TIER) / tier_span, 0.0),
+                1.0,
+            )
+            chance = self.MIN_SNAKE_CHANCE + (
+                (self.MAX_SNAKE_CHANCE - self.MIN_SNAKE_CHANCE) * progress
+            )
+        flavor_multiplier = self.SNAKE_FLAVOR_MULTIPLIERS.get(str(flavor_tag), 1.0)
+        chance *= max(0.0, float(flavor_multiplier))
+        if boss_override_active:
+            return min(chance, self.BOSS_SNAKE_CHANCE_CAP)
+        return chance
+
+    def _snake_profile_for_flavor(self, flavor_tag: str, *, tier: int) -> SnakeFlavorProfile:
+        base = self.SNAKE_FLAVOR_PROFILES.get(
+            str(flavor_tag),
+            self.SNAKE_FLAVOR_PROFILES["STANDARD"],
+        )
+        clamped_tier = max(1, int(tier))
+        if base.variant_id == "wanderer" and clamped_tier >= 12:
+            return SnakeFlavorProfile(
+                variant_id="tracker",
+                segment_count=max(6, base.segment_count - 1),
+                segment_spacing=max(14.0, base.segment_spacing),
+                speed_multiplier=base.speed_multiplier,
+            )
+        return base
+
     def _sprayer_attack_profile_for_flavor(self, flavor_tag: str) -> SprayerFlavorProfile:
         return self.SPRAYER_FLAVOR_ATTACK_PROFILES.get(
             str(flavor_tag),
@@ -475,6 +625,12 @@ class SpawnController:
             payload["spray_projectile_count"] = profile.spray_projectile_count
         if profile.spray_projectile_speed is not None:
             payload["spray_projectile_speed"] = profile.spray_projectile_speed
+        if profile.snake_variant_id is not None:
+            payload["snake_variant_id"] = profile.snake_variant_id
+        if profile.snake_segment_count is not None:
+            payload["snake_segment_count"] = profile.snake_segment_count
+        if profile.snake_segment_spacing is not None:
+            payload["snake_segment_spacing"] = profile.snake_segment_spacing
         return payload
 
     def _normalize_tier_weight_template(

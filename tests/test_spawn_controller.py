@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from systems.spawn_controller import SpawnController  # noqa: E402
-from enemies import BalloonEnemy, ConfettiSprayer, PinataEnemy, TrackingHazard  # noqa: E402
+from enemies import BalloonEnemy, ConfettiSprayer, PinataEnemy, StreamerSnake, TrackingHazard  # noqa: E402
 
 
 class DeterministicRng:
@@ -36,6 +36,42 @@ class DeterministicRng:
 
 
 class SpawnControllerValidationTests(unittest.TestCase):
+    def test_create_streamer_snake_for_spawn_sets_expected_profile(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(bounds, rng=DeterministicRng([0.5]))
+        hazard = controller.create_streamer_snake_for_spawn(
+            tier=6,
+            base_speed=240.0,
+            flavor_tag="SWARM",
+            segment_count=8,
+        )
+        self.assertIsInstance(hazard, StreamerSnake)
+        self.assertEqual(hazard.spawn_profile["enemy_kind"], "streamer_snake")
+        self.assertEqual(hazard.spawn_profile["movement_profile"], "streamer_wanderer")
+        self.assertEqual(hazard.spawn_profile["tier"], 6)
+        self.assertEqual(hazard.spawn_profile["flavor_tag"], "SWARM")
+        self.assertEqual(hazard.segment_count, 8)
+
+    def test_streamer_snake_variant_profile_is_configurable(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(bounds, rng=DeterministicRng([0.5]))
+        tracker = controller.create_streamer_snake_for_spawn(
+            tier=8,
+            base_speed=240.0,
+            flavor_tag="HUNTERS",
+            variant_id="tracker",
+        )
+        looper = controller.create_streamer_snake_for_spawn(
+            tier=8,
+            base_speed=240.0,
+            flavor_tag="STORM",
+            variant_id="looper",
+        )
+        self.assertEqual(tracker.variant_id, "tracker")
+        self.assertEqual(looper.variant_id, "looper")
+        self.assertEqual(tracker.spawn_profile["movement_profile"], "streamer_tracker")
+        self.assertEqual(looper.spawn_profile["movement_profile"], "streamer_looper")
+
     def test_create_hazard_produces_balloon_variants(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
         controller = SpawnController(
@@ -75,7 +111,7 @@ class SpawnControllerValidationTests(unittest.TestCase):
         )
         self.assertEqual(hazard.spawn_profile["tier"], 4)
         self.assertEqual(hazard.spawn_profile["flavor_tag"], "HUNTERS")
-        self.assertIn(hazard.spawn_profile["enemy_kind"], ("balloon", "confetti_sprayer"))
+        self.assertIn(hazard.spawn_profile["enemy_kind"], ("balloon", "confetti_sprayer", "streamer_snake"))
 
     def test_create_hazard_can_produce_confetti_sprayer_variant(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
@@ -93,6 +129,92 @@ class SpawnControllerValidationTests(unittest.TestCase):
         self.assertIsInstance(hazard, ConfettiSprayer)
         self.assertEqual(hazard.spawn_profile["enemy_kind"], "confetti_sprayer")
         self.assertEqual(hazard.spawn_profile["movement_profile"], "sprayer_glide")
+
+    def test_create_hazard_can_produce_streamer_snake_variant(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.7,
+            rng=DeterministicRng([0.5]),
+        )
+        hazard = controller.create_hazard_for_spawn(
+            tier=12,
+            base_speed=220.0,
+            flavor_tag="HUNTERS",
+        )
+        self.assertIsInstance(hazard, StreamerSnake)
+        self.assertEqual(hazard.spawn_profile["enemy_kind"], "streamer_snake")
+        self.assertIn(hazard.spawn_profile["movement_profile"], ("streamer_wanderer", "streamer_tracker"))
+
+    def test_streamer_snake_is_not_in_early_tier_spawn_mix(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.7,
+            rng=DeterministicRng([0.5]),
+        )
+        hazard = controller.create_hazard_for_spawn(
+            tier=3,
+            base_speed=220.0,
+            flavor_tag="STANDARD",
+        )
+        self.assertNotIsInstance(hazard, StreamerSnake)
+
+    def test_streamer_snake_flavor_profiles_change_behavior(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.2,
+            balloon_spawn_chance=0.7,
+            rng=DeterministicRng([0.5, 0.5, 0.5]),
+        )
+        swarm = controller.create_hazard_for_spawn(
+            tier=12,
+            base_speed=220.0,
+            flavor_tag="SWARM",
+        )
+        hunters = controller.create_hazard_for_spawn(
+            tier=12,
+            base_speed=220.0,
+            flavor_tag="HUNTERS",
+        )
+        storm = controller.create_hazard_for_spawn(
+            tier=12,
+            base_speed=220.0,
+            flavor_tag="STORM",
+        )
+        self.assertIsInstance(swarm, StreamerSnake)
+        self.assertIsInstance(hunters, StreamerSnake)
+        self.assertIsInstance(storm, StreamerSnake)
+        self.assertEqual(hunters.variant_id, "tracker")
+        self.assertEqual(storm.variant_id, "looper")
+        self.assertLess(
+            int(swarm.spawn_profile["snake_segment_count"]),
+            int(storm.spawn_profile["snake_segment_count"]),
+        )
+        self.assertLessEqual(
+            int(swarm.spawn_profile["snake_segment_count"]),
+            int(hunters.spawn_profile["snake_segment_count"]),
+        )
+        self.assertGreater(float(storm.spawn_profile["speed"]), float(swarm.spawn_profile["speed"]))
+
+    def test_streamer_snake_chance_is_capped_during_boss_context(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(bounds)
+        normal = controller._snake_target_chance_for_spawn(
+            tier=20,
+            flavor_tag="SWARM",
+            boss_override_active=False,
+        )
+        boss = controller._snake_target_chance_for_spawn(
+            tier=20,
+            flavor_tag="SWARM",
+            boss_override_active=True,
+        )
+        self.assertGreater(normal, boss)
+        self.assertAlmostEqual(boss, controller.BOSS_SNAKE_CHANCE_CAP, places=6)
 
     def test_confetti_sprayer_is_rare_in_early_tiers(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)

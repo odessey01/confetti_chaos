@@ -68,6 +68,24 @@ class InputController:
             and event.value[1] < 0
         )
 
+    def is_menu_left(self, event: pygame.event.Event) -> bool:
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key in (pygame.K_LEFT, pygame.K_a)
+        ) or (
+            event.type == pygame.JOYHATMOTION
+            and event.value[0] < 0
+        )
+
+    def is_menu_right(self, event: pygame.event.Event) -> bool:
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key in (pygame.K_RIGHT, pygame.K_d)
+        ) or (
+            event.type == pygame.JOYHATMOTION
+            and event.value[0] > 0
+        )
+
     def is_restart(self, event: pygame.event.Event) -> bool:
         return (
             event.type == pygame.KEYDOWN

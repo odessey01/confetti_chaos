@@ -18,13 +18,24 @@ from systems.game_session import GameSession  # noqa: E402
 
 
 class CollisionValidationTests(unittest.TestCase):
-    def test_collision_returns_true_when_player_and_hazard_overlap(self) -> None:
+    def test_collision_damage_requires_multiple_hits_before_game_over(self) -> None:
         bounds = pygame.Rect(0, 0, 1280, 720)
         session = GameSession(bounds, hazard_count=1)
         session.player.position.update(100, 100)
         session.hazards[0].position.update(100, 100)
         session.hazards[0].velocity.update(0, 0)
 
-        collided = session.update_playing(0.016, pygame.Vector2(0, 0))
+        first = session.update_playing(0.016, pygame.Vector2(0, 0))
+        self.assertFalse(first)
+        self.assertEqual(session.player.current_health, 2)
 
-        self.assertTrue(collided)
+        # Run forward enough to expire invulnerability and apply 2 more hits.
+        session.update_playing(0.8, pygame.Vector2(0, 0))
+        second = session.update_playing(0.016, pygame.Vector2(0, 0))
+        self.assertFalse(second)
+        self.assertEqual(session.player.current_health, 1)
+
+        session.update_playing(0.8, pygame.Vector2(0, 0))
+        third = session.update_playing(0.016, pygame.Vector2(0, 0))
+        self.assertTrue(third)
+        self.assertEqual(session.player.current_health, 0)

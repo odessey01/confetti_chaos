@@ -92,11 +92,11 @@ class StartMenuValidationTests(unittest.TestCase):
             visual_feedback=visual,
             save_hook=_save_hook,
         )
-        self.assertEqual(state, GameState.PLAYING)
+        self.assertEqual(state, GameState.PLAYER_SELECT)
         self.assertTrue(running)
-        self.assertEqual(session.restart_calls, 1)
-        self.assertEqual(audio.start_calls, 1)
-        self.assertEqual(session.last_start_level, 4)
+        self.assertEqual(session.restart_calls, 0)
+        self.assertEqual(audio.start_calls, 0)
+        self.assertIsNone(session.last_start_level)
 
         state, running = execute_start_menu_action(
             StartMenuAction.LEVEL_SELECT,

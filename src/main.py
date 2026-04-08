@@ -12,6 +12,7 @@ from systems import (
     BackgroundRenderer,
     GameSession,
     InputController,
+    PLAYABLE_PARTY_ANIMAL_IDS,
     RuntimeSettings,
     UiRenderer,
     VisualFeedback,
@@ -20,6 +21,7 @@ from systems import (
     assets_dir,
     clamp_selected_start_level,
     load_high_score,
+    get_party_animal,
     load_settings,
     save_high_score,
     save_settings,
@@ -34,10 +36,17 @@ TARGET_FPS = 60
 HAZARD_COUNT = 1
 START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Quit")
 PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Quit to Menu")
+PLAYER_SELECT_NOTES = {
+    "teddy_f": "Classic plush",
+    "bunny_f": "Soft hopper",
+    "fox_f": "Clever plush",
+    "cat_f": "Cozy cat",
+}
 
 
 class GameState(str, Enum):
     MENU = "MENU"
+    PLAYER_SELECT = "PLAYER_SELECT"
     PLAYING = "PLAYING"
     LEVEL_UP = "LEVEL_UP"
     PAUSED = "PAUSED"
@@ -103,8 +112,15 @@ def next_choice_index(current_index: int, direction: int, option_count: int) -> 
     return (current_index + direction) % option_count
 
 
+def next_player_select_index(current_index: int, direction: int) -> int:
+    option_count = len(PLAYABLE_PARTY_ANIMAL_IDS)
+    if option_count <= 0:
+        return 0
+    return (current_index + direction) % option_count
+
+
 def desired_music_track_for_state(state: GameState, *, boss_active: bool) -> str | None:
-    if state == GameState.MENU:
+    if state in (GameState.MENU, GameState.PLAYER_SELECT):
         return "menu"
     if state == GameState.PLAYING:
         return "boss" if boss_active else "gameplay"
@@ -179,10 +195,8 @@ def execute_start_menu_action(
     save_hook: Callable[[RuntimeSettings], None] = save_settings,
 ) -> tuple[GameState, bool]:
     if action == StartMenuAction.START_GAME:
-        session.start_new_run(start_level=runtime_settings.selected_start_level)
-        audio.play_start_or_restart()
         visual_feedback.trigger_state_transition()
-        return transition_state(state, GameState.PLAYING), True
+        return transition_state(state, GameState.PLAYER_SELECT), True
     if action == StartMenuAction.LEVEL_SELECT:
         runtime_settings.selected_start_level = next_start_level(
             runtime_settings.selected_start_level
@@ -224,7 +238,7 @@ def main() -> int:
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
 
-    state = GameState.MENU
+    state = GameState.PLAYER_SELECT
     track = desired_music_track_for_state(state, boss_active=False)
     if track is None:
         audio.stop_music()
@@ -236,8 +250,10 @@ def main() -> int:
     else:
         audio.play_ambient(ambient_track)
     start_menu_index = 0
+    player_select_index = 0
     pause_menu_index = 0
     level_up_choice_index = 0
+    show_player_debug = False
     running = True
     while running:
         delta_seconds = clock.tick(TARGET_FPS) / 1000.0
@@ -251,6 +267,8 @@ def main() -> int:
                     runtime_settings.music_enabled = not runtime_settings.music_enabled
                     audio.set_enabled(runtime_settings.music_enabled)
                     save_settings(runtime_settings)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_F3:
+                    show_player_debug = not show_player_debug
                 if state == GameState.MENU and input_controller.is_menu_up(event):
                     start_menu_index = next_start_menu_index(start_menu_index, -1)
                     audio.play_sfx("ui_nav")
@@ -278,6 +296,36 @@ def main() -> int:
                     visual_feedback.trigger_state_transition()
                 elif state == GameState.PLAYING and input_controller.is_attack(event):
                     attack = True
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_up(event):
+                    player_select_index = next_player_select_index(player_select_index, -1)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_down(event):
+                    player_select_index = next_player_select_index(player_select_index, 1)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_left(event):
+                    player_select_index = next_player_select_index(player_select_index, -1)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_right(event):
+                    player_select_index = next_player_select_index(player_select_index, 1)
+                    audio.play_sfx("ui_nav")
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_confirm(event):
+                    selected_variant = (
+                        PLAYABLE_PARTY_ANIMAL_IDS[player_select_index]
+                        if PLAYABLE_PARTY_ANIMAL_IDS
+                        else "teddy_f"
+                    )
+                    selected_variant = get_party_animal(selected_variant).variant_id
+                    session.start_new_run(
+                        start_level=runtime_settings.selected_start_level,
+                        player_animal_id=selected_variant,
+                    )
+                    audio.play_start_or_restart()
+                    audio.play_sfx("ui_confirm")
+                    visual_feedback.trigger_state_transition()
+                    state = transition_state(state, GameState.PLAYING)
+                elif state == GameState.PLAYER_SELECT and input_controller.is_menu_quit(event):
+                    audio.play_sfx("ui_back")
+                    state = transition_state(state, GameState.MENU)
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_up(event):
                     pause_menu_index = next_pause_menu_index(pause_menu_index, -1)
                     audio.play_sfx("ui_nav")
@@ -348,10 +396,9 @@ def main() -> int:
 
         if should_update_playing(state):
             movement_input = input_controller.movement_vector()
-            collided = session.update_playing(delta_seconds, movement_input, attack)
-            if collided:
+            player_died = session.update_playing(delta_seconds, movement_input, attack)
+            if player_died:
                 audio.play_sfx("player_damage_or_death")
-                visual_feedback.trigger_collision_feedback()
                 if session.score_value > high_score:
                     high_score = session.score_value
                     save_high_score(high_score)
@@ -383,6 +430,9 @@ def main() -> int:
                 audio.play_sfx("balloon_pop")
             for _ in range(min(3, int(audio_cues["sprayer_destroy_count"]))):
                 audio.play_sfx("balloon_pop")
+            for _ in range(min(3, int(audio_cues["player_damage_count"]))):
+                audio.play_sfx("player_damage_or_death")
+                visual_feedback.trigger_collision_feedback()
 
             for center in session.consume_spawn_pulse_centers():
                 visual_feedback.add_spawn_pulse(center)
@@ -407,6 +457,11 @@ def main() -> int:
 
         ui.draw_score(world_surface, session.score_value)
         ui.draw_level(world_surface, session.current_level)
+        ui.draw_health(
+            world_surface,
+            current_health=session.player.current_health,
+            max_health=session.player.max_health,
+        )
         run_snapshot = session.run_progress_snapshot()
         ui.draw_run_progress(
             world_surface,
@@ -425,8 +480,38 @@ def main() -> int:
                 runtime_settings.music_enabled,
                 runtime_settings.selected_start_level,
             )
+        elif state == GameState.PLAYER_SELECT:
+            selected_key = PLAYABLE_PARTY_ANIMAL_IDS[player_select_index] if PLAYABLE_PARTY_ANIMAL_IDS else "teddy_f"
+            selected_variant_id = get_party_animal(selected_key).variant_id
+            selected_variant = get_party_animal(selected_variant_id)
+            preview_size = 140
+            preview_x = (WINDOW_WIDTH - preview_size) / 2
+            preview_y = 180
+            session.player.position.update(preview_x, preview_y)
+            session.player.size = preview_size
+            session.player.visual_variant_id = selected_variant_id
+            session.player._movement_intensity = 0.25
+            session.player._movement_juice = 0.1
+            session.player._movement_phase += delta_seconds * 4.0
+            session.player_renderer.draw(world_surface, session.player)
+            session.player.size = 80
+            selected_note = PLAYER_SELECT_NOTES.get(selected_variant_id, "Party ready")
+            option_names = (
+                tuple(get_party_animal(v).display_name for v in PLAYABLE_PARTY_ANIMAL_IDS)
+                if PLAYABLE_PARTY_ANIMAL_IDS
+                else ("Teddy",)
+            )
+            ui.draw_player_select(
+                world_surface,
+                selected_index=player_select_index,
+                options=option_names,
+                selected_name=selected_variant.display_name,
+                selected_note=selected_note,
+            )
         elif state == GameState.PLAYING:
             session.draw_playing(world_surface)
+            if show_player_debug:
+                session.draw_player_debug_overlay(world_surface)
             if session.boss_celebration_active:
                 ui.draw_boss_victory(world_surface, session.boss_defeat_bonus)
             else:
@@ -437,6 +522,8 @@ def main() -> int:
                     ui.draw_state_text(world_surface, label, alpha=fade_alpha)
         elif state == GameState.PAUSED:
             session.draw_playing(world_surface)
+            if show_player_debug:
+                session.draw_player_debug_overlay(world_surface)
             ui.draw_paused(
                 world_surface,
                 runtime_settings.music_enabled,
@@ -445,6 +532,8 @@ def main() -> int:
             )
         elif state == GameState.LEVEL_UP:
             session.draw_playing(world_surface)
+            if show_player_debug:
+                session.draw_player_debug_overlay(world_surface)
             ui.draw_level_up_overlay(
                 world_surface,
                 run_level=session.run_level,
