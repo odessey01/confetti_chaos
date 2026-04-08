@@ -20,6 +20,8 @@ from .level_config import LevelConfig, get_level_config, LEVEL_1_SPAWN_RATE
 from .run_progression import RunProgression
 from .run_upgrades import RunUpgradeSystem, UpgradeDefinition
 from .settings import clamp_selected_start_level
+from .party_animals import DEFAULT_PARTY_ANIMAL_ID, get_party_animal
+from .player_visual import PlayerRenderer
 from .spawn_controller import SpawnController
 
 
@@ -61,6 +63,8 @@ class GameSession:
         self.elapsed_time: float
         self.run_progression = RunProgression()
         self.run_upgrades = RunUpgradeSystem()
+        self.player_renderer = PlayerRenderer()
+        self.active_player_animal_id = DEFAULT_PARTY_ANIMAL_ID
         self._current_upgrade_choices: list[UpgradeDefinition] = []
         self.max_active_projectiles = 3
         self._weapon_cooldown_timer = 0.0
@@ -79,6 +83,8 @@ class GameSession:
         self._pending_sprayer_charge_sfx_count: int = 0
         self._pending_sprayer_burst_sfx_count: int = 0
         self._pending_sprayer_destroy_sfx_count: int = 0
+        self._pending_player_damage_sfx_count: int = 0
+        self._debug_font: pygame.font.Font | None = None
         self.start_new_run()
 
     @property
@@ -100,8 +106,10 @@ class GameSession:
         progress = min(self.elapsed_time / self.RAMP_SECONDS, 1.0)
         return 1.0 + progress * (self.MAX_SPEED_MULTIPLIER - 1.0)
 
-    def start_new_run(self, start_level: int = 1) -> None:
+    def start_new_run(self, start_level: int = 1, player_animal_id: str | None = None) -> None:
         selected_level = clamp_selected_start_level(start_level)
+        selected_animal = get_party_animal(player_animal_id or self.active_player_animal_id)
+        self.active_player_animal_id = selected_animal.variant_id
         self._start_level_offset = selected_level - 1
         self.player = self._create_player()
         self.spawn_controller.reset()
@@ -137,6 +145,7 @@ class GameSession:
         self._pending_sprayer_charge_sfx_count = 0
         self._pending_sprayer_burst_sfx_count = 0
         self._pending_sprayer_destroy_sfx_count = 0
+        self._pending_player_damage_sfx_count = 0
         # Configure initial hazard mix for level 1
         level_config = self.current_level_config
         self.spawn_controller.set_tracking_chance(level_config.hazard_mix.tracking_hazard_chance)
@@ -174,7 +183,8 @@ class GameSession:
         for spray in self.enemy_sprays:
             spray.update(delta_seconds)
             if self.player.rect.colliderect(spray.rect):
-                return True
+                if self._apply_player_contact_damage():
+                    return True
             if not spray.is_expired() and not spray.is_out_of_bounds(self.bounds):
                 active_sprays.append(spray)
         self.enemy_sprays = active_sprays
@@ -314,9 +324,11 @@ class GameSession:
                 self._spawn_pulse_centers.append(hazard.rect.center)
             if isinstance(hazard, StreamerSnake):
                 if hazard.collides_with_rect(self.player.rect):
-                    return True
+                    if self._apply_player_contact_damage():
+                        return True
             elif self.player.rect.colliderect(hazard.rect):
-                return True
+                if self._apply_player_contact_damage():
+                    return True
 
         if requested_burst_spawns > 0:
             available_slots = max(0, max_enemies - len(self.hazards))
@@ -679,6 +691,7 @@ class GameSession:
             "sprayer_charge_count": self._pending_sprayer_charge_sfx_count,
             "sprayer_burst_count": self._pending_sprayer_burst_sfx_count,
             "sprayer_destroy_count": self._pending_sprayer_destroy_sfx_count,
+            "player_damage_count": self._pending_player_damage_sfx_count,
         }
         self._pending_balloon_hit_sfx_count = 0
         self._pending_balloon_pop_sfx_count = 0
@@ -692,6 +705,7 @@ class GameSession:
         self._pending_sprayer_charge_sfx_count = 0
         self._pending_sprayer_burst_sfx_count = 0
         self._pending_sprayer_destroy_sfx_count = 0
+        self._pending_player_damage_sfx_count = 0
         return cues
 
     def consume_spawn_pulse_centers(self) -> list[tuple[int, int]]:
@@ -745,14 +759,52 @@ class GameSession:
             projectile.draw(surface)
         for spray in self.enemy_sprays:
             spray.draw(surface)
-        self.player.draw(surface)
+        self.player_renderer.draw(surface, self.player)
         self.confetti.draw(surface)
 
+    def player_render_anchor(self) -> tuple[int, int]:
+        return (self.player.rect.centerx, self.player.rect.bottom)
+
+    def player_hitbox_circle(self) -> tuple[pygame.Vector2, float]:
+        center = pygame.Vector2(self.player.rect.center)
+        radius = max(10.0, float(self.player.size) * 0.36)
+        return center, radius
+
+    def draw_player_debug_overlay(self, surface: pygame.Surface) -> None:
+        anchor = self.player_render_anchor()
+        hitbox_center, hitbox_radius = self.player_hitbox_circle()
+        pygame.draw.circle(surface, (255, 96, 140), anchor, 4)
+        pygame.draw.circle(
+            surface,
+            (116, 222, 255),
+            (int(hitbox_center.x), int(hitbox_center.y)),
+            int(hitbox_radius),
+            width=2,
+        )
+        pygame.draw.rect(surface, (246, 220, 122), self.player.rect, width=1)
+        variant = get_party_animal(getattr(self.player, "visual_variant_id", None))
+        if not pygame.font.get_init():
+            pygame.font.init()
+        if self._debug_font is None:
+            self._debug_font = pygame.font.Font(None, 24)
+        label = f"Player Debug: {variant.variant_id} ({variant.animal_name})"
+        text = self._debug_font.render(label, True, (244, 248, 252))
+        surface.blit(text, (14, 14))
+
     def _create_player(self) -> Player:
-        size = 40
+        size = 80
         spawn_x = (self.bounds.width - size) / 2
         spawn_y = (self.bounds.height - size) / 2
-        return Player(spawn_x, spawn_y, size=size, speed=self.BASE_PLAYER_SPEED)
+        player = Player(spawn_x, spawn_y, size=size, speed=self.BASE_PLAYER_SPEED)
+        player.visual_variant_id = self.active_player_animal_id
+        player.reset_health()
+        return player
+
+    def _apply_player_contact_damage(self) -> bool:
+        took_damage = self.player.apply_damage(1)
+        if took_damage:
+            self._pending_player_damage_sfx_count += 1
+        return self.player.current_health <= 0
 
     def _create_initial_hazards(self, player: Player) -> list[Hazard]:
         spawn_speed = self._spawn_speed()

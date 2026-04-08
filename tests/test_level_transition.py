@@ -444,7 +444,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
                 fired_count += 1
         self.assertLessEqual(fired_count, 1)
 
-    def test_confetti_spray_collision_with_player_triggers_game_over(self) -> None:
+    def test_confetti_spray_collision_with_player_applies_damage(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         session.enemy_sprays = [
             ConfettiSpray(
@@ -456,7 +456,8 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
             )
         ]
         did_game_over = session.update_playing(0.05, pygame.Vector2(0.0, 0.0), attack=False)
-        self.assertTrue(did_game_over)
+        self.assertFalse(did_game_over)
+        self.assertEqual(session.player.current_health, 2)
 
     def test_confetti_sprays_expire_and_cleanup_correctly(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
@@ -546,7 +547,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
             self.assertLessEqual(distance, snake.segment_spacing * 1.25)
             self.assertGreaterEqual(distance, snake.segment_spacing * 0.45)
 
-    def test_streamer_snake_body_collision_with_player_triggers_game_over(self) -> None:
+    def test_streamer_snake_body_collision_with_player_applies_damage(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         snake = StreamerSnake(speed=130.0, segment_count=6, segment_spacing=16.0)
         player_center = pygame.Vector2(session.player.rect.center)
@@ -565,9 +566,10 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         ]
         session.hazards = [snake]
         collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
-        self.assertTrue(collided)
+        self.assertFalse(collided)
+        self.assertEqual(session.player.current_health, 2)
 
-    def test_streamer_snake_collision_path_returns_single_game_over_signal(self) -> None:
+    def test_streamer_snake_collision_path_applies_single_damage_hit(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         snake = StreamerSnake(speed=130.0, segment_count=5, segment_spacing=16.0)
         snake.position = pygame.Vector2(session.player.rect.x, session.player.rect.y)
@@ -577,7 +579,8 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         snake._segment_centers = [pygame.Vector2(player_center) for _ in range(5)]
         session.hazards = [snake]
         collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
-        self.assertIs(collided, True)
+        self.assertIs(collided, False)
+        self.assertEqual(session.player.current_health, 2)
 
     def test_streamer_snake_tail_history_stays_bounded_over_time(self) -> None:
         snake = StreamerSnake(speed=145.0, segment_count=8, segment_spacing=18.0)

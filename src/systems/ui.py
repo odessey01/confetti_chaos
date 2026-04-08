@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pygame
 
+from .paths import asset_path
+
 
 class UiRenderer:
     def __init__(self) -> None:
@@ -16,6 +18,7 @@ class UiRenderer:
         self._prompt_color = (205, 220, 240)
         self._state_color = (235, 235, 235)
         self._body_font = pygame.font.Font(None, 34)
+        self._health_icon_cache: dict[str, pygame.Surface | None] = {}
 
     def draw_score(self, surface: pygame.Surface, score_value: int) -> None:
         score_surface = self._score_font.render(f"Score: {score_value}", True, self._score_color)
@@ -25,6 +28,49 @@ class UiRenderer:
         level_surface = self._score_font.render(f"Level: {level}", True, self._score_color)
         level_rect = level_surface.get_rect(topright=(surface.get_width() - 20, 20))
         surface.blit(level_surface, level_rect)
+
+    def draw_health(self, surface: pygame.Surface, *, current_health: int, max_health: int) -> None:
+        icon_size = 26
+        spacing = 10
+        start_x = surface.get_width() - 24 - ((icon_size + spacing) * max_health)
+        y = 66
+        for index in range(max_health):
+            is_full = index < current_health
+            self._draw_lollipop_icon(
+                surface,
+                x=start_x + (index * (icon_size + spacing)),
+                y=y,
+                size=icon_size,
+                full=is_full,
+            )
+
+    def _draw_lollipop_icon(self, surface: pygame.Surface, *, x: int, y: int, size: int, full: bool) -> None:
+        icon = self._health_icon(full, size)
+        if icon is not None:
+            surface.blit(icon, (x, y))
+            return
+        candy_color = (255, 122, 176) if full else (88, 98, 112)
+        stick_color = (244, 236, 214) if full else (130, 136, 144)
+        center = (x + size // 2, y + size // 2 - 2)
+        radius = max(6, size // 3)
+        pygame.draw.circle(surface, candy_color, center, radius)
+        pygame.draw.circle(surface, (244, 244, 248), center, radius, width=2)
+        pygame.draw.rect(surface, stick_color, (center[0] - 2, center[1] + radius - 1, 4, max(8, size // 2)), border_radius=2)
+
+    def _health_icon(self, full: bool, size: int) -> pygame.Surface | None:
+        key = f"{'full' if full else 'empty'}:{size}"
+        if key in self._health_icon_cache:
+            return self._health_icon_cache[key]
+        filename = "lollipop_full.png" if full else "lollipop_empty.png"
+        path = asset_path("images", "ui", filename)
+        try:
+            image = pygame.image.load(str(path))
+            scaled = pygame.transform.smoothscale(image, (size, size))
+            self._health_icon_cache[key] = scaled
+            return scaled
+        except (pygame.error, FileNotFoundError, OSError):
+            self._health_icon_cache[key] = None
+            return None
 
     def draw_run_progress(
         self,
@@ -112,6 +158,44 @@ class UiRenderer:
             self._prompt_color,
         )
         prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 195))
+        surface.blit(prompt_surface, prompt_rect)
+
+    def draw_player_select(
+        self,
+        surface: pygame.Surface,
+        *,
+        selected_index: int,
+        options: tuple[str, ...],
+        selected_name: str,
+        selected_note: str,
+    ) -> None:
+        center_x = surface.get_width() // 2
+        center_y = surface.get_height() // 2
+
+        title_surface = self._title_font.render("Choose Your Party Animal", True, self._title_color)
+        title_rect = title_surface.get_rect(center=(center_x, 90))
+        surface.blit(title_surface, title_rect)
+
+        for idx, name in enumerate(options):
+            color = (255, 235, 140) if idx == selected_index else self._prompt_color
+            item = self._prompt_font.render(name, True, color)
+            item_rect = item.get_rect(center=(center_x, center_y + 120 + (idx * 36)))
+            surface.blit(item, item_rect)
+
+        selected_label = self._prompt_font.render(f"Selected: {selected_name}", True, (245, 248, 250))
+        selected_label_rect = selected_label.get_rect(center=(center_x, center_y - 92))
+        surface.blit(selected_label, selected_label_rect)
+
+        note_surface = self._body_font.render(selected_note, True, self._prompt_color)
+        note_rect = note_surface.get_rect(center=(center_x, center_y - 56))
+        surface.blit(note_surface, note_rect)
+
+        prompt_surface = self._prompt_font.render(
+            "Left/Right or A/D to choose | Enter/Space to start",
+            True,
+            self._prompt_color,
+        )
+        prompt_rect = prompt_surface.get_rect(center=(center_x, surface.get_height() - 48))
         surface.blit(prompt_surface, prompt_rect)
 
     def draw_paused(
