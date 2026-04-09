@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pygame
 
 from enemies import (
@@ -13,42 +15,98 @@ from enemies import (
     PinataEnemy,
     StreamerSnake,
 )
-from player import Player
-from player.projectile import Projectile
+from pickups import XpDrop
+from player import BottleRocket, BottleRocketFlightProfile, Player
+from .aim_assist import AimAssistConfig, AimAssistSystem
+from .character_passives import CharacterPassiveProfile, get_character_passive
+from .character_supers import CharacterSuperProfile, get_character_super
 from .confetti import Confetti
 from .level_config import LevelConfig, get_level_config, LEVEL_1_SPAWN_RATE
 from .run_progression import RunProgression
 from .run_upgrades import RunUpgradeSystem, UpgradeDefinition
 from .settings import clamp_selected_start_level
 from .party_animals import DEFAULT_PARTY_ANIMAL_ID, get_party_animal
+from .player_animation import PlayerAnimationSystem
 from .player_visual import PlayerRenderer
 from .spawn_controller import SpawnController
+from .weapons import (
+    DEFAULT_WEAPON_ID,
+    SparklerAttackProfile,
+    WeaponDefinition,
+    get_weapon_definition,
+)
 
 
 class GameSession:
     BASE_HAZARD_SPEED = 220.0
-    MAX_SPEED_MULTIPLIER = 2.1
-    RAMP_SECONDS = 75.0
+    MAX_SPEED_MULTIPLIER = 1.7
+    SPEED_RAMP_LEVEL_SPAN = 12
     KILL_BONUS_POINTS = 50
     BOSS_BONUS_POINTS = 1000
     BOSS_CELEBRATION_TIME = 1.5
-    LEVEL_UP_INTERVAL = 30.0
-    POINTS_PER_LEVEL = 500
     BASE_PLAYER_SPEED = 320.0
-    BASE_PROJECTILE_SPEED = 500.0
-    BASE_FIRE_COOLDOWN = 0.2
+    ANIMATION_MOVE_INPUT_DEADZONE = 0.18
+    BASE_PROJECTILE_SPEED = 540.0
+    BASE_FIRE_COOLDOWN = 0.18
+    BOTTLE_ROCKET_LIFETIME = 2.2
+    BOTTLE_ROCKET_MAX_TRAVEL_DISTANCE = 1120.0
+    BOTTLE_ROCKET_WOBBLE_DEGREES = 3.2
+    BOTTLE_ROCKET_WOBBLE_FREQUENCY_HZ = 8.4
+    BOTTLE_ROCKET_ACCEL_PER_SECOND = 48.0
+    BOTTLE_ROCKET_MAX_SPEED_MULTIPLIER = 1.16
+    BOTTLE_ROCKET_DECAY_START_FRACTION = 0.46
+    BOTTLE_ROCKET_DECAY_SPEED_PER_SECOND = 118.0
+    BOTTLE_ROCKET_DOWNWARD_ARC_PER_SECOND = 0.48
+    BOTTLE_ROCKET_EXPLOSION_DAMAGE_MODE = "direct_hit_only"
+    BOTTLE_ROCKET_EXPLOSION_RADIUS = 0.0
+    SPARKLER_SWEEP_CONE_DEGREES = 82.0
+    SPARKLER_ARC_INNER_RADIUS_RATIO = 0.24
+    SPARKLER_SWEEP_DURATION = 0.08
     MAX_ACTIVE_ENEMY_SPRAYS = 48
     SPRAYER_PROJECTILE_LIFETIME = 0.58
     SPRAYER_PROJECTILE_SIZE = 9
-    XP_REWARDS: dict[str, int] = {
-        "tracking": 12,
-        "balloon": 12,
-        "mini_balloon": 10,
-        "pinata": 24,
-        "streamer_snake": 20,
-        "confetti_sprayer": 28,
-        "boss_balloon": 220,
+    PLAYER_HITBOX_SCALE = 0.75
+    XP_PICKUP_RADIUS = 18
+    XP_MAGNET_RADIUS = 120.0
+    XP_MAGNET_SPEED = 380.0
+    XP_DROP_LIFETIME_SECONDS = 16.0
+    XP_DROP_FADE_DURATION_SECONDS = 2.5
+    XP_DROP_SIZE_MIN = 12
+    XP_DROP_SIZE_MAX = 20
+    DODGE_AFFECTED_BY_PASSIVES = False
+    AIM_ASSIST_CONTROLLER_ENABLED = True
+    AIM_ASSIST_KEYBOARD_ENABLED = False
+    XP_DROP_VALUES: dict[str, int] = {
+        "tracking": 3,
+        "balloon": 3,
+        "mini_balloon": 2,
+        "pinata": 6,
+        "streamer_snake": 6,
+        "confetti_sprayer": 7,
+        "boss_balloon": 18,
     }
+    XP_REWARDS: dict[str, int] = XP_DROP_VALUES
+    SUPER_CHARGE_REWARDS: dict[str, int] = {
+        "tracking": 6,
+        "balloon": 6,
+        "mini_balloon": 5,
+        "pinata": 10,
+        "streamer_snake": 10,
+        "confetti_sprayer": 11,
+        "boss_balloon": 26,
+    }
+    SUPER_CHARGE_PER_BOSS_HIT = 3
+    CAT_FRENZY_DURATION = 4.0
+    CAT_FRENZY_DAMAGE_BONUS = 1
+    CAT_FRENZY_FIRE_RATE_BONUS = 0.35
+    BEAR_ROAR_RADIUS = 360.0
+    BEAR_ROAR_MAX_PUSH_DISTANCE = 170.0
+    BEAR_ROAR_MAX_PUSH_SPEED = 620.0
+    BEAR_ROAR_INVULNERABILITY_DURATION = 0.45
+    BEAR_ROAR_DAMAGE_RADIUS = 150.0
+    BEAR_ROAR_BOSS_CHIP_DAMAGE = 1
+    RACCOON_CHAOS_DROP_XP_BONUS = 16
+    RACCOON_CHAOS_DROP_SCORE_BONUS = 120
 
     def __init__(self, bounds: pygame.Rect, hazard_count: int = 1) -> None:
         self.bounds = bounds
@@ -56,18 +114,46 @@ class GameSession:
         self.spawn_controller = SpawnController(bounds, initial_hazards=hazard_count)
         self.player: Player
         self.hazards: list[Hazard]
-        self.projectiles: list[Projectile]
+        self.projectiles: list[BottleRocket]
         self.enemy_sprays: list[ConfettiSpray]
+        self.xp_drops: list[XpDrop]
         self.confetti: Confetti
         self.score_seconds: float
         self.elapsed_time: float
         self.run_progression = RunProgression()
         self.run_upgrades = RunUpgradeSystem()
         self.player_renderer = PlayerRenderer()
+        self.player_animation = PlayerAnimationSystem()
+        self._active_input_method = "keyboard_mouse"
+        self._aim_assist_user_enabled = True
+        self._aim_assist = AimAssistSystem(config=AimAssistConfig(enabled=False))
+        self._aim_assist_debug: dict[str, object] = {}
+        self._sparkler_attack_debug: dict[str, object] = {}
+        self._sparkler_swing_count = 0
+        self._last_attack_direction = pygame.Vector2(1.0, 0.0)
+        self.active_weapon_id = DEFAULT_WEAPON_ID
+        self._active_weapon_definition: WeaponDefinition = get_weapon_definition(DEFAULT_WEAPON_ID)
         self.active_player_animal_id = DEFAULT_PARTY_ANIMAL_ID
+        self.active_character_passive_id = DEFAULT_PARTY_ANIMAL_ID
+        self._active_character_passive: CharacterPassiveProfile = get_character_passive(
+            DEFAULT_PARTY_ANIMAL_ID
+        )
+        self.active_character_super_id = DEFAULT_PARTY_ANIMAL_ID
+        self._active_character_super: CharacterSuperProfile = get_character_super(
+            DEFAULT_PARTY_ANIMAL_ID
+        )
+        self._super_charge = 0
+        self._character_max_health_bonus = 0
+        self._character_move_speed_mult = 0.0
+        self._character_outgoing_damage_bonus = 0
+        self._character_incoming_damage_mult = 1.0
+        self._character_xp_gain_mult = 0.0
+        self._character_pickup_radius_bonus = 0.0
+        self._character_xp_magnet_mult = 0.0
         self._current_upgrade_choices: list[UpgradeDefinition] = []
         self.max_active_projectiles = 3
         self._weapon_cooldown_timer = 0.0
+        self._bonus_score_points = 0.0
         self._spawn_pulse_centers: list[tuple[int, int]]
         self._boss_active: bool = False
         self._boss_defeated: bool = False
@@ -84,18 +170,24 @@ class GameSession:
         self._pending_sprayer_burst_sfx_count: int = 0
         self._pending_sprayer_destroy_sfx_count: int = 0
         self._pending_player_damage_sfx_count: int = 0
+        self._pending_super_activate_sfx_count = 0
+        self._pending_bottle_rocket_launch_sfx_count = 0
+        self._pending_bottle_rocket_impact_sfx_count = 0
+        self._pending_sparkler_swing_sfx_count = 0
+        self._pending_sparkler_hit_sfx_count = 0
+        self._pending_xp_pickup_sfx_count = 0
+        self._dodge_trail_timer = 0.0
+        self._cat_frenzy_timer = 0.0
         self._debug_font: pygame.font.Font | None = None
         self.start_new_run()
 
     @property
     def score_value(self) -> int:
-        return int(self.score_seconds)
+        return int(self.score_seconds + self._bonus_score_points)
 
     @property
     def current_level(self) -> int:
-        level_from_time = int(self.elapsed_time / self.LEVEL_UP_INTERVAL) + 1
-        level_from_points = int(self.score_value / self.POINTS_PER_LEVEL) + 1
-        return max(level_from_time, level_from_points) + self._start_level_offset
+        return max(1, self.run_progression.run_level) + self._start_level_offset
 
     @property
     def current_level_config(self) -> LevelConfig:
@@ -103,24 +195,43 @@ class GameSession:
 
     @property
     def difficulty_multiplier(self) -> float:
-        progress = min(self.elapsed_time / self.RAMP_SECONDS, 1.0)
+        level_progress = max(0, self.current_level - 1)
+        progress = min(level_progress / max(1, self.SPEED_RAMP_LEVEL_SPAN), 1.0)
         return 1.0 + progress * (self.MAX_SPEED_MULTIPLIER - 1.0)
 
-    def start_new_run(self, start_level: int = 1, player_animal_id: str | None = None) -> None:
+    def start_new_run(
+        self,
+        start_level: int = 1,
+        player_animal_id: str | None = None,
+        weapon_id: str | None = None,
+    ) -> None:
         selected_level = clamp_selected_start_level(start_level)
         selected_animal = get_party_animal(player_animal_id or self.active_player_animal_id)
+        passive = get_character_passive(selected_animal.variant_id)
+        super_profile = get_character_super(selected_animal.variant_id)
         self.active_player_animal_id = selected_animal.variant_id
+        self.active_character_passive_id = passive.character_id
+        self._active_character_passive = passive
+        self.active_character_super_id = super_profile.character_id
+        self._active_character_super = super_profile
+        self._super_charge = 0
         self._start_level_offset = selected_level - 1
+        self.set_active_weapon(weapon_id or self.active_weapon_id)
         self.player = self._create_player()
+        self.player_animation.set_character(self.active_player_animal_id)
+        self.player_animation.reset()
+        self._apply_character_passive_profile(self._active_character_passive)
         self.spawn_controller.reset()
         self.projectiles = []
         self.enemy_sprays = []
+        self.xp_drops = []
         self.confetti = Confetti()
         self.run_progression.reset()
         self.run_upgrades.reset()
         self._current_upgrade_choices = []
         self.max_active_projectiles = 3
         self._weapon_cooldown_timer = 0.0
+        self._bonus_score_points = 0.0
         self.score_seconds = 0.0
         self.elapsed_time = 0.0
         self.hazards = self._create_initial_hazards(self.player)
@@ -146,6 +257,17 @@ class GameSession:
         self._pending_sprayer_burst_sfx_count = 0
         self._pending_sprayer_destroy_sfx_count = 0
         self._pending_player_damage_sfx_count = 0
+        self._pending_super_activate_sfx_count = 0
+        self._pending_bottle_rocket_launch_sfx_count = 0
+        self._pending_bottle_rocket_impact_sfx_count = 0
+        self._pending_sparkler_swing_sfx_count = 0
+        self._pending_sparkler_hit_sfx_count = 0
+        self._pending_xp_pickup_sfx_count = 0
+        self._dodge_trail_timer = 0.0
+        self._cat_frenzy_timer = 0.0
+        self._sparkler_attack_debug = {}
+        self._sparkler_swing_count = 0
+        self._last_attack_direction = pygame.Vector2(1.0, 0.0)
         # Configure initial hazard mix for level 1
         level_config = self.current_level_config
         self.spawn_controller.set_tracking_chance(level_config.hazard_mix.tracking_hazard_chance)
@@ -166,28 +288,67 @@ class GameSession:
         self.elapsed_time += delta_seconds
         self.score_seconds += delta_seconds
         self._weapon_cooldown_timer = max(0.0, self._weapon_cooldown_timer - delta_seconds)
+        if self._sparkler_attack_debug:
+            expires = float(self._sparkler_attack_debug.get("expires_in", 0.0))
+            expires = max(0.0, expires - max(0.0, delta_seconds))
+            self._sparkler_attack_debug["expires_in"] = expires
+            if expires <= 0.0:
+                self._sparkler_attack_debug = {}
         effects = self.run_upgrades.effects_snapshot()
         self._apply_player_upgrade_effects(effects)
         self.player.update(delta_seconds, movement_input, self.bounds)
+        movement_strength = pygame.Vector2(movement_input).length()
+        movement_active = bool(movement_strength >= self.ANIMATION_MOVE_INPUT_DEADZONE) or bool(
+            self.player.is_dodging
+        )
+        self.player_animation.update(
+            delta_seconds,
+            moving=movement_active,
+            facing=pygame.Vector2(self.player.facing),
+        )
         player_center = pygame.Vector2(self.player.rect.center)
+        player_collision_rect = self.player_collision_rect()
+        self._dodge_trail_timer = max(0.0, self._dodge_trail_timer - delta_seconds)
+        self._cat_frenzy_timer = max(0.0, self._cat_frenzy_timer - delta_seconds)
+        if self.player.is_dodging and self._dodge_trail_timer <= 0.0:
+            self.confetti.spawn_burst(player_center, count=2, speed_min=80.0, speed_max=150.0, lifetime_min=0.2, lifetime_max=0.35)
+            self._dodge_trail_timer = 0.04
         
         # Handle attack input
         if attack:
             self.fire_projectile(self.player.facing)
         
         # Update projectiles
-        self.projectiles = [p for p in self.projectiles if not p.is_expired() and not p.is_out_of_bounds(self.bounds)]
+        active_projectiles: list[BottleRocket] = []
         for projectile in self.projectiles:
             projectile.update(delta_seconds)
+            if projectile.is_expired() or projectile.is_out_of_bounds(self.bounds):
+                self._spawn_bottle_rocket_impact_feedback(
+                    pygame.Vector2(projectile.position),
+                    impact_scale=0.85,
+                    end_of_range=True,
+                )
+                self._pending_bottle_rocket_impact_sfx_count += 1
+                continue
+            active_projectiles.append(projectile)
+        self.projectiles = active_projectiles
         active_sprays: list[ConfettiSpray] = []
         for spray in self.enemy_sprays:
             spray.update(delta_seconds)
-            if self.player.rect.colliderect(spray.rect):
+            if player_collision_rect.colliderect(spray.rect):
                 if self._apply_player_contact_damage():
                     return True
             if not spray.is_expired() and not spray.is_out_of_bounds(self.bounds):
                 active_sprays.append(spray)
         self.enemy_sprays = active_sprays
+        active_drops: list[XpDrop] = []
+        for drop in self.xp_drops:
+            drop.update(delta_seconds)
+            if not drop.is_expired():
+                active_drops.append(drop)
+        self.xp_drops = active_drops
+        self._apply_xp_drop_magnetism(player_center, delta_seconds)
+        self._collect_xp_drops(player_collision_rect)
         
         # Check projectile-hazard collisions
         kills = self._check_projectile_collisions()
@@ -323,10 +484,10 @@ class GameSession:
                 self.spawn_controller.configure_hazard(hazard, player_center)
                 self._spawn_pulse_centers.append(hazard.rect.center)
             if isinstance(hazard, StreamerSnake):
-                if hazard.collides_with_rect(self.player.rect):
+                if hazard.collides_with_rect(player_collision_rect):
                     if self._apply_player_contact_damage():
                         return True
-            elif self.player.rect.colliderect(hazard.rect):
+            elif player_collision_rect.colliderect(hazard.rect):
                 if self._apply_player_contact_damage():
                     return True
 
@@ -359,26 +520,585 @@ class GameSession:
         return False
 
     def fire_projectile(self, direction: pygame.Vector2) -> None:
-        """Fire a projectile in the given direction from the player center."""
+        """Compatibility wrapper for active-weapon attack dispatch."""
+        self.fire_active_weapon(direction)
+
+    def set_active_weapon(self, weapon_id: str | None) -> None:
+        definition = get_weapon_definition(weapon_id)
+        self.active_weapon_id = definition.weapon_id
+        self._active_weapon_definition = definition
+
+    def active_weapon_snapshot(self) -> dict[str, int | float | str]:
+        weapon = self._active_weapon_definition
+        return {
+            "weapon_id": weapon.weapon_id,
+            "display_name": weapon.display_name,
+            "weapon_type": weapon.weapon_type,
+            "base_damage": int(weapon.base_damage),
+            "effective_range": float(weapon.effective_range),
+            "attack_cooldown_seconds": float(weapon.attack_cooldown_seconds),
+        }
+
+    def fire_active_weapon(self, direction: pygame.Vector2) -> None:
+        weapon = self._active_weapon_definition
+        if weapon.weapon_id == "sparkler":
+            self.fire_sparkler(direction)
+            return
+        self.fire_bottle_rocket(direction)
+
+    def fire_bottle_rocket(self, direction: pygame.Vector2) -> None:
+        """Fire a bottle rocket in the given direction from the player center."""
         if self._weapon_cooldown_timer > 0.0:
             return
         if len(self.projectiles) >= self.max_active_projectiles:
             return
         player_center = pygame.Vector2(self.player.rect.center)
+        resolved_direction = self._resolve_fire_direction(player_center, pygame.Vector2(direction))
+        self._last_attack_direction = pygame.Vector2(resolved_direction)
         effects = self.run_upgrades.effects_snapshot()
-        projectile_speed = self.BASE_PROJECTILE_SPEED * (1.0 + effects.get("projectile_speed_mult", 0.0))
-        projectile_damage = 1 + int(effects.get("projectile_damage", 0.0))
-        fire_rate_mult = max(0.0, effects.get("fire_rate_mult", 0.0))
-        self._weapon_cooldown_timer = max(0.06, self.BASE_FIRE_COOLDOWN * (1.0 - fire_rate_mult))
-        projectile = Projectile(
-            position=player_center,
-            direction=pygame.Vector2(direction),
-            speed=projectile_speed,
-            lifetime=3.0,
-            size=8,
-            damage=projectile_damage,
+        rocket_speed = self.BASE_PROJECTILE_SPEED * (1.0 + effects.get("projectile_speed_mult", 0.0))
+        rocket_damage = (
+            1
+            + int(effects.get("projectile_damage", 0.0))
+            + self._character_outgoing_damage_bonus
         )
-        self.projectiles.append(projectile)
+        if self._cat_frenzy_timer > 0.0:
+            rocket_damage += self.CAT_FRENZY_DAMAGE_BONUS
+        rocket_damage = max(1, int(rocket_damage))
+        fire_rate_mult = max(0.0, effects.get("fire_rate_mult", 0.0))
+        if self._cat_frenzy_timer > 0.0:
+            fire_rate_mult += self.CAT_FRENZY_FIRE_RATE_BONUS
+        self._weapon_cooldown_timer = max(0.06, self.BASE_FIRE_COOLDOWN * (1.0 - fire_rate_mult))
+        rocket = BottleRocket(
+            position=player_center,
+            direction=resolved_direction,
+            speed=rocket_speed,
+            lifetime=self.BOTTLE_ROCKET_LIFETIME,
+            max_travel_distance=self.BOTTLE_ROCKET_MAX_TRAVEL_DISTANCE,
+            size=8,
+            damage=rocket_damage,
+            flight_profile=self._current_bottle_rocket_flight_profile(),
+        )
+        self.projectiles.append(rocket)
+        self._spawn_bottle_rocket_launch_feedback(player_center, resolved_direction)
+        self._pending_bottle_rocket_launch_sfx_count += 1
+        self._apply_bottle_rocket_recoil(resolved_direction)
+
+    def fire_sparkler(self, direction: pygame.Vector2) -> None:
+        """Temporary sparkler melee hook for weapon-system foundation."""
+        if self._weapon_cooldown_timer > 0.0:
+            return
+        weapon = self._active_weapon_definition
+        effects = self.run_upgrades.effects_snapshot()
+        profile = self._current_sparkler_attack_profile()
+        cooldown = float(weapon.attack_cooldown_seconds) * max(0.35, float(profile.cooldown_multiplier))
+        fire_rate_mult = max(0.0, effects.get("fire_rate_mult", 0.0))
+        self._weapon_cooldown_timer = max(0.06, cooldown * max(0.2, 1.0 - fire_rate_mult))
+        facing = self._resolve_sparkler_attack_direction(pygame.Vector2(direction))
+        self._last_attack_direction = pygame.Vector2(facing)
+        attack_range_bonus = max(0.0, effects.get("sparkler_range_bonus", 0.0))
+        cone_bonus = max(0.0, effects.get("sparkler_cone_bonus_degrees", 0.0))
+        damage_bonus = max(0, int(effects.get("sparkler_damage_bonus", 0.0)))
+        attack_range = max(
+            24.0,
+            float(weapon.effective_range) + float(profile.range_bonus) + float(attack_range_bonus),
+        )
+        cone_degrees = max(
+            10.0,
+            self.SPARKLER_SWEEP_CONE_DEGREES + float(profile.cone_bonus_degrees) + float(cone_bonus),
+        )
+        attack_damage = max(1, int(weapon.base_damage) + int(profile.damage_bonus) + int(damage_bonus))
+        center = pygame.Vector2(self.player.rect.center) + (facing * 34.0)
+        swing = self._sparkler_attack_shape(
+            origin=pygame.Vector2(self.player.rect.center),
+            direction=facing,
+            attack_range=attack_range,
+            cone_degrees=cone_degrees,
+        )
+        self._sparkler_attack_debug = {
+            "origin": swing["origin"],
+            "direction": swing["direction"],
+            "cone_degrees": float(swing["cone_degrees"]),
+            "range": float(swing["range"]),
+            "inner_range": float(swing["inner_range"]),
+            "tip_left": swing["tip_left"],
+            "tip_right": swing["tip_right"],
+            "expires_in": self.SPARKLER_SWEEP_DURATION,
+            "swing_count": self._sparkler_swing_count + 1,
+        }
+        self._sparkler_swing_count += 1
+        self._pending_sparkler_swing_sfx_count += 1
+        self._apply_sparkler_melee_hits(
+            origin=pygame.Vector2(self.player.rect.center),
+            direction=facing,
+            damage=attack_damage,
+            attack_range=attack_range,
+            cone_degrees=cone_degrees,
+        )
+        self.confetti.spawn_burst(
+            center,
+            count=4,
+            speed_min=85.0,
+            speed_max=140.0,
+            lifetime_min=0.1,
+            lifetime_max=0.18,
+        )
+        tip_center = pygame.Vector2(self.player.rect.center) + (facing * attack_range)
+        tip_left = swing["tip_left"]
+        tip_right = swing["tip_right"]
+        if isinstance(tip_left, pygame.Vector2):
+            self.confetti.spawn_burst(
+                tip_left,
+                count=2,
+                speed_min=140.0,
+                speed_max=230.0,
+                lifetime_min=0.08,
+                lifetime_max=0.16,
+            )
+        if isinstance(tip_right, pygame.Vector2):
+            self.confetti.spawn_burst(
+                tip_right,
+                count=2,
+                speed_min=140.0,
+                speed_max=230.0,
+                lifetime_min=0.08,
+                lifetime_max=0.16,
+            )
+        self.confetti.spawn_burst(
+            tip_center,
+            count=3,
+            speed_min=160.0,
+            speed_max=260.0,
+            lifetime_min=0.08,
+            lifetime_max=0.16,
+        )
+
+    def sparkler_attack_snapshot(self) -> dict[str, object]:
+        return dict(self._sparkler_attack_debug)
+
+    def _resolve_sparkler_attack_direction(self, base_direction: pygame.Vector2) -> pygame.Vector2:
+        candidate = pygame.Vector2(base_direction)
+        if candidate.length_squared() <= 0.0:
+            candidate = pygame.Vector2(self.player.facing)
+        if candidate.length_squared() <= 0.0:
+            candidate = pygame.Vector2(self._last_attack_direction)
+        if candidate.length_squared() <= 0.0:
+            candidate = pygame.Vector2(1.0, 0.0)
+        return candidate.normalize()
+
+    def _current_sparkler_attack_profile(self) -> SparklerAttackProfile:
+        """Future hook for sparkler evolution/upgrade paths."""
+        return SparklerAttackProfile()
+
+    def _apply_sparkler_melee_hits(
+        self,
+        *,
+        origin: pygame.Vector2,
+        direction: pygame.Vector2,
+        damage: int,
+        attack_range: float,
+        cone_degrees: float,
+    ) -> None:
+        hazards_to_remove: list[int] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+        pinata_split_requests: list[dict[str, object]] = []
+        super_charge_gained = 0
+        sparkler_hit_contacts = 0
+
+        for hazard_idx, hazard in enumerate(self.hazards):
+            candidate_points = self._sparkler_target_points(hazard.rect)
+            if not any(
+                self._target_in_attack_arc(
+                    origin=origin,
+                    target=point,
+                    direction=direction,
+                    attack_range=attack_range,
+                    cone_degrees=cone_degrees,
+                )
+                for point in candidate_points
+            ):
+                continue
+
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=damage,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                    super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
+                    sparkler_hit_contacts += 1
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    self._bonus_score_points += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
+                        self.run_upgrades.effects_snapshot()
+                    )
+                    hazard_kill_kinds.append("boss_balloon")
+                    self._boss_active = False
+                    self._boss_defeated = True
+                    self._boss_defeated_level = self.current_level
+                    self._boss_celebration_active = True
+                    self._boss_defeat_timer = self.BOSS_CELEBRATION_TIME
+                    self._boss_victory_sound_pending = True
+                    self._pending_boss_defeat_sfx = True
+                    self._pending_milestone_clear_sfx = True
+                    self._pending_confetti_celebration_sfx = True
+                    self._spawn_enhanced_confetti(pygame.Vector2(hazard.rect.center))
+            elif isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=damage,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    sparkler_hit_contacts += 1
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    center = pygame.Vector2(hazard.rect.center)
+                    hazard_kill_positions.append(center)
+                    hazard_kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                    profile = hazard.spawn_profile or {}
+                    break_confetti_count = int(profile.get("break_confetti_count", 14))
+                    mini_spawn_count = int(profile.get("mini_spawn_count", 0))
+                    pinata_split_requests.append(
+                        {
+                            "center": center,
+                            "tier": int(profile.get("tier", self.current_level)),
+                            "flavor_tag": str(
+                                profile.get("flavor_tag", self.current_level_config.flavor.name)
+                            ),
+                            "mini_spawn_count": max(0, mini_spawn_count),
+                        }
+                    )
+                    self._spawn_pinata_break_confetti(
+                        center,
+                        burst_count=max(10, break_confetti_count),
+                    )
+            elif isinstance(hazard, ConfettiSprayer):
+                self._pending_balloon_hit_sfx_count += 1
+                sparkler_hit_contacts += 1
+                if hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    center = pygame.Vector2(hazard.rect.center)
+                    hazard_kill_positions.append(center)
+                    hazard_kill_kinds.append("confetti_sprayer")
+                    self._pending_balloon_pop_sfx_count += 1
+                    self._pending_sprayer_destroy_sfx_count += 1
+                    self._spawn_sprayer_destroy_confetti(center)
+            elif isinstance(hazard, StreamerSnake):
+                self._pending_balloon_hit_sfx_count += 1
+                sparkler_hit_contacts += 1
+                if hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    center = pygame.Vector2(hazard.rect.center)
+                    hazard_kill_positions.append(center)
+                    hazard_kill_kinds.append("streamer_snake")
+                    self._pending_balloon_pop_sfx_count += 1
+                    self._spawn_streamer_snake_break_confetti(center)
+            else:
+                self._pending_balloon_hit_sfx_count += 1
+                sparkler_hit_contacts += 1
+                if hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+                    hazard_kill_kinds.append(kind)
+                    self._pending_balloon_pop_sfx_count += 1
+
+        for idx in sorted(hazards_to_remove, reverse=True):
+            self.hazards.pop(idx)
+
+        for center in hazard_kill_positions:
+            self.confetti.spawn_burst(center, count=8 + self._confetti_bonus_count())
+
+        if pinata_split_requests:
+            self._spawn_pinata_minis(pinata_split_requests)
+        if hazard_kill_kinds:
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+            super_charge_gained += sum(
+                self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds
+            )
+        if super_charge_gained > 0:
+            self.add_super_charge(super_charge_gained)
+        if sparkler_hit_contacts > 0:
+            self._pending_sparkler_hit_sfx_count += sparkler_hit_contacts
+
+    def _target_in_attack_arc(
+        self,
+        *,
+        origin: pygame.Vector2,
+        target: pygame.Vector2,
+        direction: pygame.Vector2,
+        attack_range: float,
+        cone_degrees: float,
+    ) -> bool:
+        to_target = pygame.Vector2(target) - pygame.Vector2(origin)
+        distance = to_target.length()
+        outer_range = max(24.0, float(attack_range))
+        inner_range = outer_range * max(0.0, min(self.SPARKLER_ARC_INNER_RADIUS_RATIO, 0.9))
+        if distance <= inner_range or distance > outer_range:
+            return False
+        target_dir = to_target.normalize()
+        facing_dir = pygame.Vector2(direction)
+        if facing_dir.length_squared() <= 0.0:
+            facing_dir = pygame.Vector2(1.0, 0.0)
+        else:
+            facing_dir = facing_dir.normalize()
+        dot = max(-1.0, min(1.0, facing_dir.dot(target_dir)))
+        angle = abs(math.degrees(math.acos(dot)))
+        return angle <= (max(5.0, float(cone_degrees)) * 0.5)
+
+    def _sparkler_target_points(self, rect: pygame.Rect) -> tuple[pygame.Vector2, ...]:
+        """Sample points across enemy body for melee overlap checks."""
+        center = pygame.Vector2(rect.center)
+        return (
+            center,
+            pygame.Vector2(rect.midtop),
+            pygame.Vector2(rect.midbottom),
+            pygame.Vector2(rect.midleft),
+            pygame.Vector2(rect.midright),
+            pygame.Vector2(rect.topleft),
+            pygame.Vector2(rect.topright),
+            pygame.Vector2(rect.bottomleft),
+            pygame.Vector2(rect.bottomright),
+        )
+
+    def _sparkler_attack_shape(
+        self,
+        *,
+        origin: pygame.Vector2,
+        direction: pygame.Vector2,
+        attack_range: float,
+        cone_degrees: float,
+    ) -> dict[str, object]:
+        half_cone = max(5.0, float(cone_degrees) * 0.5)
+        outer_range = max(24.0, float(attack_range))
+        inner_range = outer_range * max(0.0, min(self.SPARKLER_ARC_INNER_RADIUS_RATIO, 0.9))
+        tip_left = origin + (direction.rotate(-half_cone) * outer_range)
+        tip_right = origin + (direction.rotate(half_cone) * outer_range)
+        return {
+            "origin": pygame.Vector2(origin),
+            "direction": pygame.Vector2(direction),
+            "range": outer_range,
+            "inner_range": inner_range,
+            "cone_degrees": float(cone_degrees),
+            "tip_left": tip_left,
+            "tip_right": tip_right,
+        }
+
+    def _draw_sparkler_attack_visual(self, surface: pygame.Surface) -> None:
+        if not self._sparkler_attack_debug:
+            return
+        expires = float(self._sparkler_attack_debug.get("expires_in", 0.0))
+        if expires <= 0.0:
+            return
+        origin = self._sparkler_attack_debug.get("origin")
+        direction = self._sparkler_attack_debug.get("direction")
+        cone_degrees = float(self._sparkler_attack_debug.get("cone_degrees", 0.0))
+        outer_range = float(self._sparkler_attack_debug.get("range", 0.0))
+        inner_range = float(self._sparkler_attack_debug.get("inner_range", 0.0))
+        if not isinstance(origin, pygame.Vector2):
+            return
+        if not isinstance(direction, pygame.Vector2):
+            return
+        if direction.length_squared() <= 0.0 or outer_range <= 0.0:
+            return
+        facing = direction.normalize()
+
+        strength = max(0.0, min(expires / self.SPARKLER_SWEEP_DURATION, 1.0))
+        glow_alpha = int(110 + (95 * strength))
+        core_alpha = int(190 + (60 * strength))
+        swing_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        outer_points = self._sparkler_arc_points(
+            origin=origin,
+            direction=facing,
+            radius=outer_range,
+            cone_degrees=cone_degrees,
+            segments=18,
+        )
+        inner_points = self._sparkler_arc_points(
+            origin=origin,
+            direction=facing,
+            radius=max(2.0, inner_range),
+            cone_degrees=cone_degrees,
+            segments=18,
+        )
+        if len(outer_points) >= 2:
+            pygame.draw.lines(
+                swing_surface,
+                (255, 170, 70, glow_alpha),
+                False,
+                outer_points,
+                width=max(8, int((outer_range - inner_range) * 0.5)),
+            )
+            pygame.draw.lines(
+                swing_surface,
+                (255, 228, 130, core_alpha),
+                False,
+                outer_points,
+                width=3,
+            )
+            pygame.draw.lines(
+                swing_surface,
+                (255, 250, 232, min(255, core_alpha + 14)),
+                False,
+                outer_points,
+                width=1,
+            )
+        if inner_range > 2.0 and len(inner_points) >= 2:
+            pygame.draw.lines(
+                swing_surface,
+                (255, 146, 72, core_alpha),
+                False,
+                inner_points,
+                width=2,
+            )
+
+        # Spark crackles distributed across the arc for a celebratory sparkler feel.
+        swing_seed = int(self._sparkler_attack_debug.get("swing_count", 0))
+        for index, point in enumerate(outer_points):
+            if index % 2 != 0:
+                continue
+            phase = abs(math.sin((swing_seed * 0.9) + (index * 0.55)))
+            sparkle_alpha = int((120 + (130 * phase)) * strength)
+            if sparkle_alpha <= 0:
+                continue
+            sparkle_radius = 1 + int(phase * 2.0)
+            pygame.draw.circle(
+                swing_surface,
+                (255, 244, 196, min(255, sparkle_alpha)),
+                (int(point[0]), int(point[1])),
+                sparkle_radius,
+            )
+
+        # Sparkler baton/wand segment near the player's hand.
+        baton_start = origin + (facing * max(4.0, inner_range * 0.28))
+        baton_end = origin + (facing * max(14.0, inner_range * 0.92))
+        pygame.draw.line(
+            swing_surface,
+            (84, 58, 36, int(180 * strength)),
+            baton_start,
+            baton_end,
+            width=4,
+        )
+        pygame.draw.line(
+            swing_surface,
+            (255, 236, 154, int(220 * strength)),
+            baton_start,
+            baton_end,
+            width=2,
+        )
+        baton_tip = baton_end + (facing * 2.0)
+        pygame.draw.circle(
+            swing_surface,
+            (255, 248, 210, int(230 * strength)),
+            (int(baton_tip.x), int(baton_tip.y)),
+            3,
+        )
+        surface.blit(swing_surface, (0, 0))
+
+    def _sparkler_arc_points(
+        self,
+        *,
+        origin: pygame.Vector2,
+        direction: pygame.Vector2,
+        radius: float,
+        cone_degrees: float,
+        segments: int = 14,
+    ) -> list[tuple[float, float]]:
+        half_cone = max(5.0, float(cone_degrees) * 0.5)
+        clamped_segments = max(4, int(segments))
+        step = (half_cone * 2.0) / float(clamped_segments)
+        points: list[tuple[float, float]] = []
+        for index in range(clamped_segments + 1):
+            angle = -half_cone + (step * index)
+            point = pygame.Vector2(origin) + (pygame.Vector2(direction).rotate(angle) * radius)
+            points.append((point.x, point.y))
+        return points
+
+    def _resolve_fire_direction(self, origin: pygame.Vector2, base_direction: pygame.Vector2) -> pygame.Vector2:
+        target_centers = [pygame.Vector2(hazard.rect.center) for hazard in self.hazards]
+        target = self._aim_assist.select_target(
+            origin=origin,
+            aim_direction=base_direction,
+            target_centers=target_centers,
+        )
+        adjusted = self._aim_assist.adjusted_direction(
+            origin=origin,
+            aim_direction=base_direction,
+            target_centers=target_centers,
+        )
+        self._aim_assist_debug = {
+            "origin": pygame.Vector2(origin),
+            "base_direction": pygame.Vector2(base_direction).normalize() if pygame.Vector2(base_direction).length_squared() > 0 else pygame.Vector2(1.0, 0.0),
+            "adjusted_direction": pygame.Vector2(adjusted),
+            "target_center": pygame.Vector2(target.center) if target is not None else None,
+            "enabled": bool(self._aim_assist.config.enabled),
+            "cone_degrees": float(self._aim_assist.config.cone_degrees),
+            "max_distance": float(self._aim_assist.config.max_distance),
+        }
+        return adjusted
+
+    def trigger_player_dodge(self, movement_input: pygame.Vector2) -> bool:
+        triggered = self.player.try_start_dodge(movement_input)
+        if triggered:
+            center = pygame.Vector2(self.player.rect.center)
+            self.confetti.spawn_burst(center, count=8, speed_min=150.0, speed_max=260.0, lifetime_min=0.25, lifetime_max=0.45)
+            self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+        return triggered
+
+    def set_active_input_method(self, input_method: str) -> None:
+        self._active_input_method = str(input_method)
+        self._refresh_aim_assist_config()
+
+    def set_aim_assist_user_enabled(self, enabled: bool) -> None:
+        self._aim_assist_user_enabled = bool(enabled)
+        self._refresh_aim_assist_config()
+
+    def _refresh_aim_assist_config(self) -> None:
+        controller_active = self._active_input_method == "controller"
+        input_default = self.AIM_ASSIST_CONTROLLER_ENABLED if controller_active else self.AIM_ASSIST_KEYBOARD_ENABLED
+        enabled = bool(self._aim_assist_user_enabled and input_default)
+        self._aim_assist.config = AimAssistConfig(
+            enabled=enabled,
+            cone_degrees=self._aim_assist.config.cone_degrees,
+            max_distance=self._aim_assist.config.max_distance,
+            assist_strength=self._aim_assist.config.assist_strength,
+        )
+
+    def draw_aim_assist_debug_overlay(self, surface: pygame.Surface) -> None:
+        if not self._aim_assist_debug:
+            return
+        origin = self._aim_assist_debug.get("origin")
+        base_direction = self._aim_assist_debug.get("base_direction")
+        adjusted_direction = self._aim_assist_debug.get("adjusted_direction")
+        target_center = self._aim_assist_debug.get("target_center")
+        if not isinstance(origin, pygame.Vector2) or not isinstance(base_direction, pygame.Vector2):
+            return
+
+        max_distance = float(self._aim_assist_debug.get("max_distance", 0.0))
+        cone_degrees = float(self._aim_assist_debug.get("cone_degrees", 0.0))
+        enabled = bool(self._aim_assist_debug.get("enabled", False))
+        color = (130, 235, 255) if enabled else (120, 120, 130)
+
+        left = base_direction.rotate(-cone_degrees) * max_distance
+        right = base_direction.rotate(cone_degrees) * max_distance
+        pygame.draw.line(surface, color, origin, origin + left, width=1)
+        pygame.draw.line(surface, color, origin, origin + right, width=1)
+        pygame.draw.circle(surface, color, (int(origin.x), int(origin.y)), int(max_distance), width=1)
+
+        if isinstance(adjusted_direction, pygame.Vector2):
+            pygame.draw.line(surface, (255, 230, 150), origin, origin + (adjusted_direction * 130.0), width=2)
+        pygame.draw.line(surface, (180, 210, 255), origin, origin + (base_direction * 120.0), width=1)
+        if isinstance(target_center, pygame.Vector2):
+            pygame.draw.circle(surface, (255, 130, 130), (int(target_center.x), int(target_center.y)), 8, width=2)
 
     @property
     def pending_run_level_ups(self) -> int:
@@ -396,7 +1116,10 @@ class GameSession:
 
     def ensure_upgrade_choices(self) -> list[UpgradeDefinition]:
         if not self._current_upgrade_choices:
-            self._current_upgrade_choices = self.run_upgrades.generate_choices(count=3)
+            self._current_upgrade_choices = self.run_upgrades.generate_choices(
+                count=3,
+                active_weapon_id=self.active_weapon_id,
+            )
             if not self._current_upgrade_choices and self.run_progression.pending_level_ups > 0:
                 self.run_progression.consume_pending_level_up()
         return list(self._current_upgrade_choices)
@@ -407,7 +1130,7 @@ class GameSession:
         if index < 0 or index >= len(self._current_upgrade_choices):
             return False
         chosen = self._current_upgrade_choices[index]
-        if not self.run_upgrades.apply_choice(chosen.id):
+        if not self.run_upgrades.apply_choice(chosen.id, active_weapon_id=self.active_weapon_id):
             return False
         self.run_progression.consume_pending_level_up()
         self._current_upgrade_choices = []
@@ -424,12 +1147,19 @@ class GameSession:
         hazard_kill_positions = []
         hazard_kill_kinds: list[str] = []
         pinata_split_requests: list[dict[str, object]] = []
+        super_charge_gained = 0
         
         for proj_idx, projectile in enumerate(self.projectiles):
             for hazard_idx, hazard in enumerate(self.hazards):
                 if projectile.rect.colliderect(hazard.rect):
                     if proj_idx not in projectiles_to_remove:
                         projectiles_to_remove.append(proj_idx)
+                        self._spawn_bottle_rocket_impact_feedback(
+                            pygame.Vector2(projectile.position),
+                            impact_scale=1.0,
+                            end_of_range=False,
+                        )
+                        self._pending_bottle_rocket_impact_sfx_count += 1
                     
                     # Handle boss health
                     if isinstance(hazard, BossBalloon):
@@ -440,11 +1170,12 @@ class GameSession:
                         if hit_count > 0:
                             self._pending_balloon_hit_sfx_count += hit_count
                             self._pending_boss_hit_sfx_count += hit_count
+                            super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
                         if defeated:
                             # Boss defeated - award bonus and enhanced feedback
                             hazards_to_remove.append(hazard_idx)
                             hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
-                            self.score_seconds += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
+                            self._bonus_score_points += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
                                 self.run_upgrades.effects_snapshot()
                             )
                             hazard_kill_kinds.append("boss_balloon")
@@ -532,8 +1263,12 @@ class GameSession:
         if pinata_split_requests:
             self._spawn_pinata_minis(pinata_split_requests)
         if hazard_kill_kinds:
-            xp_gained = sum(self.XP_REWARDS.get(kind, 10) for kind in hazard_kill_kinds)
-            self.run_progression.gain_xp(xp_gained)
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            super_charge_gained += sum(
+                self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds
+            )
+        if super_charge_gained > 0:
+            self.add_super_charge(super_charge_gained)
 
         return len(hazards_to_remove)
 
@@ -552,7 +1287,9 @@ class GameSession:
 
     def _apply_player_upgrade_effects(self, effects: dict[str, float]) -> None:
         move_speed_mult = max(0.0, effects.get("move_speed_mult", 0.0))
-        self.player.speed = self.BASE_PLAYER_SPEED * (1.0 + move_speed_mult)
+        self.player.speed = self.BASE_PLAYER_SPEED * (
+            1.0 + move_speed_mult + self._character_move_speed_mult
+        )
         projectile_cap_bonus = max(0, int(effects.get("projectile_cap_bonus", 0.0)))
         self.max_active_projectiles = min(5, 3 + projectile_cap_bonus)
 
@@ -560,6 +1297,83 @@ class GameSession:
         effects = self.run_upgrades.effects_snapshot()
         enemy_speed_reduction = max(0.0, min(0.45, effects.get("enemy_speed_reduction", 0.0)))
         return base_speed * (1.0 - enemy_speed_reduction)
+
+    def _spawn_xp_drops_for_kills(
+        self,
+        positions: list[pygame.Vector2],
+        enemy_kinds: list[str],
+    ) -> None:
+        for center, kind in zip(positions, enemy_kinds):
+            base_xp = int(self.XP_DROP_VALUES.get(kind, 10))
+            xp_value = max(1, int(round(base_xp * (1.0 + self._character_xp_gain_mult))))
+            self._spawn_xp_drop(center, xp_value=xp_value)
+
+    def _spawn_xp_drop(self, center: pygame.Vector2, *, xp_value: int) -> None:
+        self.xp_drops.append(
+            XpDrop(
+                pygame.Vector2(center),
+                xp_value=xp_value,
+                size=self._xp_drop_size_for_value(xp_value),
+                lifetime_seconds=self.XP_DROP_LIFETIME_SECONDS,
+                fade_duration_seconds=self.XP_DROP_FADE_DURATION_SECONDS,
+            )
+        )
+
+    def _xp_drop_size_for_value(self, xp_value: int) -> int:
+        max_reward = max(1, max(self.XP_DROP_VALUES.values()))
+        ratio = max(0.0, min(float(xp_value) / float(max_reward), 1.0))
+        return int(
+            round(
+                self.XP_DROP_SIZE_MIN
+                + (self.XP_DROP_SIZE_MAX - self.XP_DROP_SIZE_MIN) * ratio
+            )
+        )
+
+    def _collect_xp_drops(self, player_collision_rect: pygame.Rect) -> None:
+        if not self.xp_drops:
+            return
+        pickup_rect = player_collision_rect.inflate(
+            int((self.XP_PICKUP_RADIUS + self._character_pickup_radius_bonus) * 2),
+            int((self.XP_PICKUP_RADIUS + self._character_pickup_radius_bonus) * 2),
+        )
+        remaining: list[XpDrop] = []
+        for drop in self.xp_drops:
+            if drop.is_expired():
+                continue
+            if pickup_rect.colliderect(drop.rect):
+                self.run_progression.gain_xp(drop.xp_value)
+                self.confetti.spawn_burst(
+                    pygame.Vector2(drop.position),
+                    count=3,
+                    speed_min=70.0,
+                    speed_max=130.0,
+                    lifetime_min=0.14,
+                    lifetime_max=0.24,
+                )
+                self._spawn_pulse_centers.append((int(drop.position.x), int(drop.position.y)))
+                self._pending_xp_pickup_sfx_count += 1
+                continue
+            remaining.append(drop)
+        self.xp_drops = remaining
+
+    def _apply_xp_drop_magnetism(self, player_center: pygame.Vector2, delta_seconds: float) -> None:
+        if not self.xp_drops:
+            return
+        clamped_delta = max(0.0, float(delta_seconds))
+        magnet_radius = self.XP_MAGNET_RADIUS + self._character_pickup_radius_bonus
+        magnet_speed = self.XP_MAGNET_SPEED * (1.0 + self._character_xp_magnet_mult)
+        for drop in self.xp_drops:
+            offset = player_center - drop.position
+            distance = offset.length()
+            if distance <= 0.001 or distance > magnet_radius:
+                continue
+            direction = offset / distance
+            pull_scale = 1.0 - (distance / magnet_radius)
+            step = magnet_speed * pull_scale * clamped_delta
+            if step >= distance:
+                drop.position = pygame.Vector2(player_center)
+                continue
+            drop.position += direction * step
 
     def _score_multiplier_from_effects(self, effects: dict[str, float]) -> float:
         return 1.0 + max(0.0, effects.get("score_mult", 0.0))
@@ -692,6 +1506,12 @@ class GameSession:
             "sprayer_burst_count": self._pending_sprayer_burst_sfx_count,
             "sprayer_destroy_count": self._pending_sprayer_destroy_sfx_count,
             "player_damage_count": self._pending_player_damage_sfx_count,
+            "super_activate_count": self._pending_super_activate_sfx_count,
+            "bottle_rocket_launch_count": self._pending_bottle_rocket_launch_sfx_count,
+            "bottle_rocket_impact_count": self._pending_bottle_rocket_impact_sfx_count,
+            "sparkler_swing_count": self._pending_sparkler_swing_sfx_count,
+            "sparkler_hit_count": self._pending_sparkler_hit_sfx_count,
+            "xp_pickup_count": self._pending_xp_pickup_sfx_count,
         }
         self._pending_balloon_hit_sfx_count = 0
         self._pending_balloon_pop_sfx_count = 0
@@ -706,6 +1526,12 @@ class GameSession:
         self._pending_sprayer_burst_sfx_count = 0
         self._pending_sprayer_destroy_sfx_count = 0
         self._pending_player_damage_sfx_count = 0
+        self._pending_super_activate_sfx_count = 0
+        self._pending_bottle_rocket_launch_sfx_count = 0
+        self._pending_bottle_rocket_impact_sfx_count = 0
+        self._pending_sparkler_swing_sfx_count = 0
+        self._pending_sparkler_hit_sfx_count = 0
+        self._pending_xp_pickup_sfx_count = 0
         return cues
 
     def consume_spawn_pulse_centers(self) -> list[tuple[int, int]]:
@@ -718,9 +1544,7 @@ class GameSession:
         return self.current_level_config.enemy_speed * self.difficulty_multiplier
 
     def _complete_boss_celebration(self) -> None:
-        """Complete the boss defeat celebration and advance to the next level."""
-        next_level_threshold = self.current_level * self.LEVEL_UP_INTERVAL
-        self.elapsed_time = max(self.elapsed_time, float(next_level_threshold))
+        """Complete the boss defeat celebration and resume normal gameplay flow."""
         self._boss_celebration_active = False
         self._boss_defeat_timer = 0.0
 
@@ -759,20 +1583,46 @@ class GameSession:
             projectile.draw(surface)
         for spray in self.enemy_sprays:
             spray.draw(surface)
-        self.player_renderer.draw(surface, self.player)
+        for drop in self.xp_drops:
+            drop.draw(surface)
+        animation_frame = self.player_animation.current_frame()
+        animation_rect = self.player_animation.frame_rect_for_player(self.player.rect)
+        self.player_renderer.draw(
+            surface,
+            self.player,
+            animation_frame=animation_frame,
+            animation_rect=animation_rect,
+            animation_flip_x=self.player_animation.should_flip_horizontal(),
+        )
+        self._draw_sparkler_attack_visual(surface)
         self.confetti.draw(surface)
 
     def player_render_anchor(self) -> tuple[int, int]:
         return (self.player.rect.centerx, self.player.rect.bottom)
 
+    def player_collision_rect(self) -> pygame.Rect:
+        """Return the fixed gameplay hitbox, intentionally independent of animation frames."""
+        base = self.player.rect
+        scaled_width = max(1, int(round(base.width * self.PLAYER_HITBOX_SCALE)))
+        scaled_height = max(1, int(round(base.height * self.PLAYER_HITBOX_SCALE)))
+        return pygame.Rect(
+            base.centerx - (scaled_width // 2),
+            base.centery - (scaled_height // 2),
+            scaled_width,
+            scaled_height,
+        )
+
     def player_hitbox_circle(self) -> tuple[pygame.Vector2, float]:
-        center = pygame.Vector2(self.player.rect.center)
-        radius = max(10.0, float(self.player.size) * 0.36)
+        collision_rect = self.player_collision_rect()
+        center = pygame.Vector2(collision_rect.center)
+        radius = max(8.0, min(float(collision_rect.width), float(collision_rect.height)) * 0.5)
         return center, radius
 
     def draw_player_debug_overlay(self, surface: pygame.Surface) -> None:
         anchor = self.player_render_anchor()
         hitbox_center, hitbox_radius = self.player_hitbox_circle()
+        animation_rect = self.player_animation.frame_rect_for_player(self.player.rect)
+        animation_snapshot = self.player_animation.snapshot()
         pygame.draw.circle(surface, (255, 96, 140), anchor, 4)
         pygame.draw.circle(
             surface,
@@ -782,6 +1632,9 @@ class GameSession:
             width=2,
         )
         pygame.draw.rect(surface, (246, 220, 122), self.player.rect, width=1)
+        pygame.draw.rect(surface, (116, 222, 255), self.player_collision_rect(), width=1)
+        if animation_rect is not None:
+            pygame.draw.rect(surface, (126, 238, 166), animation_rect, width=1)
         variant = get_party_animal(getattr(self.player, "visual_variant_id", None))
         if not pygame.font.get_init():
             pygame.font.init()
@@ -790,6 +1643,14 @@ class GameSession:
         label = f"Player Debug: {variant.variant_id} ({variant.animal_name})"
         text = self._debug_font.render(label, True, (244, 248, 252))
         surface.blit(text, (14, 14))
+        anim_label = (
+            "Anim Debug: "
+            f"{animation_snapshot['state']} "
+            f"frame {animation_snapshot['frame_index']}/{max(0, int(animation_snapshot['frame_count']) - 1)} "
+            f"flip={animation_snapshot['flip_x']}"
+        )
+        anim_text = self._debug_font.render(anim_label, True, (208, 248, 226))
+        surface.blit(anim_text, (14, 36))
 
     def _create_player(self) -> Player:
         size = 80
@@ -800,8 +1661,379 @@ class GameSession:
         player.reset_health()
         return player
 
+    def _apply_character_passive_profile(self, profile: CharacterPassiveProfile) -> None:
+        self._character_max_health_bonus = int(profile.max_health_bonus)
+        self._character_move_speed_mult = float(profile.move_speed_mult)
+        self._character_outgoing_damage_bonus = int(profile.outgoing_damage_bonus)
+        self._character_incoming_damage_mult = max(0.0, float(profile.incoming_damage_mult))
+        self._character_xp_gain_mult = max(0.0, float(profile.xp_gain_mult))
+        self._character_pickup_radius_bonus = max(0.0, float(profile.pickup_radius_bonus))
+        self._character_xp_magnet_mult = max(0.0, float(profile.xp_magnet_mult))
+
+        self.player.max_health = max(1, 3 + self._character_max_health_bonus)
+        self.player.reset_health()
+        self.player.speed = self.BASE_PLAYER_SPEED * (1.0 + self._character_move_speed_mult)
+
+    def active_character_passive_snapshot(self) -> dict[str, int | float | str]:
+        profile = self._active_character_passive
+        return {
+            "character_id": profile.character_id,
+            "display_name": profile.display_name,
+            "passive_bonus": profile.passive_bonus,
+            "passive_drawback": profile.passive_drawback,
+            "max_health_bonus": self._character_max_health_bonus,
+            "move_speed_mult": self._character_move_speed_mult,
+            "outgoing_damage_bonus": self._character_outgoing_damage_bonus,
+            "incoming_damage_mult": self._character_incoming_damage_mult,
+            "xp_gain_mult": self._character_xp_gain_mult,
+            "pickup_radius_bonus": self._character_pickup_radius_bonus,
+            "xp_magnet_mult": self._character_xp_magnet_mult,
+        }
+
+    @property
+    def super_charge(self) -> int:
+        return int(self._super_charge)
+
+    def super_snapshot(self) -> dict[str, int | str | bool | float]:
+        profile = self._active_character_super
+        max_charge = max(1, int(profile.max_charge))
+        charge = max(0, min(int(self._super_charge), max_charge))
+        return {
+            "character_id": profile.character_id,
+            "super_id": profile.super_id,
+            "super_name": profile.super_name,
+            "activation_behavior": profile.activation_behavior,
+            "charge": charge,
+            "max_charge": max_charge,
+            "ready": charge >= max_charge,
+            "progress_fraction": charge / max_charge,
+        }
+
+    def add_super_charge(self, amount: int) -> int:
+        gained = max(0, int(amount))
+        if gained <= 0:
+            return 0
+        max_charge = max(1, int(self._active_character_super.max_charge))
+        previous = int(self._super_charge)
+        self._super_charge = max(0, min(previous + gained, max_charge))
+        return int(self._super_charge) - previous
+
+    def can_activate_super(self) -> bool:
+        return int(self._super_charge) >= max(1, int(self._active_character_super.max_charge))
+
+    def try_activate_super(self) -> str | None:
+        if not self.can_activate_super():
+            return None
+        super_id = self._active_character_super.super_id
+        self._super_charge = 0
+        self._activate_super_effect(super_id)
+        self._pending_super_activate_sfx_count += 1
+        return super_id
+
+    def _activate_super_effect(self, super_id: str) -> None:
+        if super_id == "bear_roar":
+            self._activate_bear_roar()
+        elif super_id == "bunny_mega_hop":
+            self._activate_bunny_mega_hop()
+        elif super_id == "cat_frenzy":
+            self._activate_cat_frenzy()
+        elif super_id == "raccoon_chaos_drop":
+            self._activate_raccoon_chaos_drop()
+
+    def _activate_bear_roar(self) -> None:
+        center = pygame.Vector2(self.player.rect.center)
+        self.player.grant_invulnerability(self.BEAR_ROAR_INVULNERABILITY_DURATION)
+        hazards_to_remove: list[int] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+
+        for hazard_idx, hazard in enumerate(self.hazards):
+            hazard_center = pygame.Vector2(hazard.rect.center)
+            to_hazard = hazard_center - center
+            distance = to_hazard.length()
+            if distance <= 0.001 or distance > self.BEAR_ROAR_RADIUS:
+                continue
+            direction = to_hazard.normalize()
+            falloff = max(0.2, 1.0 - (distance / self.BEAR_ROAR_RADIUS))
+            push_distance = self.BEAR_ROAR_MAX_PUSH_DISTANCE * falloff
+            hazard.position += direction * push_distance
+            if hasattr(hazard, "velocity"):
+                hazard.velocity = hazard.velocity + (direction * (self.BEAR_ROAR_MAX_PUSH_SPEED * falloff))  # type: ignore[attr-defined]
+
+            if distance > self.BEAR_ROAR_DAMAGE_RADIUS:
+                continue
+
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=self.BEAR_ROAR_BOSS_CHIP_DAMAGE,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("boss_balloon")
+                continue
+
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=1,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                    profile = hazard.spawn_profile or {}
+                    self._spawn_pinata_break_confetti(
+                        pygame.Vector2(hazard.rect.center),
+                        burst_count=max(10, int(profile.get("break_confetti_count", 14))),
+                    )
+                continue
+
+            if isinstance(hazard, ConfettiSprayer):
+                self._pending_balloon_hit_sfx_count += 1
+                if hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    center_pos = pygame.Vector2(hazard.rect.center)
+                    hazard_kill_positions.append(center_pos)
+                    hazard_kill_kinds.append("confetti_sprayer")
+                    self._pending_balloon_pop_sfx_count += 1
+                    self._pending_sprayer_destroy_sfx_count += 1
+                    self._spawn_sprayer_destroy_confetti(center_pos)
+                continue
+
+            if isinstance(hazard, StreamerSnake):
+                self._pending_balloon_hit_sfx_count += 1
+                if hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    center_pos = pygame.Vector2(hazard.rect.center)
+                    hazard_kill_positions.append(center_pos)
+                    hazard_kill_kinds.append("streamer_snake")
+                    self._pending_balloon_pop_sfx_count += 1
+                    self._spawn_streamer_snake_break_confetti(center_pos)
+                continue
+
+            self._pending_balloon_hit_sfx_count += 1
+            if hazard_idx not in hazards_to_remove:
+                hazards_to_remove.append(hazard_idx)
+                hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                hazard_kill_kinds.append(
+                    str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+                )
+                self._pending_balloon_pop_sfx_count += 1
+
+        for idx in sorted(hazards_to_remove, reverse=True):
+            self.hazards.pop(idx)
+
+        if hazard_kill_kinds:
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+
+        for kill_pos in hazard_kill_positions:
+            self.confetti.spawn_burst(
+                kill_pos,
+                count=8 + self._confetti_bonus_count(),
+                speed_min=170.0,
+                speed_max=310.0,
+                lifetime_min=0.25,
+                lifetime_max=0.45,
+            )
+
+        self.confetti.spawn_burst(
+            center,
+            count=28 + self._confetti_bonus_count(),
+            speed_min=260.0,
+            speed_max=430.0,
+            lifetime_min=0.35,
+            lifetime_max=0.6,
+        )
+        self.confetti.spawn_burst(
+            center,
+            count=14 + self._confetti_bonus_count(),
+            speed_min=120.0,
+            speed_max=220.0,
+            lifetime_min=0.2,
+            lifetime_max=0.34,
+        )
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+
+    def _activate_bunny_mega_hop(self) -> None:
+        facing = pygame.Vector2(self.player.facing)
+        if facing.length_squared() <= 0.0:
+            facing = pygame.Vector2(1.0, 0.0)
+        else:
+            facing = facing.normalize()
+
+        hop_distance = 220.0
+        self.player.position += facing * hop_distance
+        max_x = self.bounds.width - self.player.size
+        max_y = self.bounds.height - self.player.size
+        self.player.position.x = max(0.0, min(self.player.position.x, max_x))
+        self.player.position.y = max(0.0, min(self.player.position.y, max_y))
+        self.player.grant_invulnerability(0.35)
+
+        landing = pygame.Vector2(self.player.rect.center)
+        radius = 180.0
+        max_push_speed = 420.0
+        for hazard in self.hazards:
+            hazard_center = pygame.Vector2(hazard.rect.center)
+            to_hazard = hazard_center - landing
+            distance = to_hazard.length()
+            if distance <= 0.001 or distance > radius:
+                continue
+            direction = to_hazard.normalize()
+            falloff = 1.0 - (distance / radius)
+            if hasattr(hazard, "velocity"):
+                hazard.velocity = hazard.velocity + (direction * (max_push_speed * falloff))  # type: ignore[attr-defined]
+            hazard.position += direction * (55.0 * falloff)
+
+        self.confetti.spawn_burst(
+            landing,
+            count=22 + self._confetti_bonus_count(),
+            speed_min=240.0,
+            speed_max=400.0,
+            lifetime_min=0.35,
+            lifetime_max=0.65,
+        )
+        self._spawn_pulse_centers.append((int(landing.x), int(landing.y)))
+
+    def _activate_cat_frenzy(self) -> None:
+        self._cat_frenzy_timer = self.CAT_FRENZY_DURATION
+        center = pygame.Vector2(self.player.rect.center)
+        self.confetti.spawn_burst(
+            center,
+            count=16 + self._confetti_bonus_count(),
+            speed_min=180.0,
+            speed_max=320.0,
+            lifetime_min=0.3,
+            lifetime_max=0.55,
+        )
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+
+    def _activate_raccoon_chaos_drop(self) -> None:
+        center = pygame.Vector2(self.player.rect.center)
+        self.run_progression.gain_xp(self.RACCOON_CHAOS_DROP_XP_BONUS)
+        self._bonus_score_points += self.RACCOON_CHAOS_DROP_SCORE_BONUS * self._score_multiplier_from_effects(
+            self.run_upgrades.effects_snapshot()
+        )
+
+        radius = 210.0
+        max_push_speed = 280.0
+        for hazard in self.hazards:
+            hazard_center = pygame.Vector2(hazard.rect.center)
+            offset = hazard_center - center
+            distance = offset.length()
+            if distance <= 0.001 or distance > radius:
+                continue
+            direction = offset.normalize()
+            falloff = 1.0 - (distance / radius)
+            if hasattr(hazard, "velocity"):
+                hazard.velocity = hazard.velocity + (direction * (max_push_speed * falloff))  # type: ignore[attr-defined]
+            hazard.position += direction * (35.0 * falloff)
+
+        self.confetti.spawn_burst(
+            center,
+            count=20 + self._confetti_bonus_count(),
+            speed_min=190.0,
+            speed_max=340.0,
+            lifetime_min=0.35,
+            lifetime_max=0.6,
+        )
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+
+    def _spawn_bottle_rocket_launch_feedback(
+        self,
+        origin: pygame.Vector2,
+        direction: pygame.Vector2,
+    ) -> None:
+        direction_vector = (
+            pygame.Vector2(direction).normalize()
+            if pygame.Vector2(direction).length_squared() > 0.0
+            else pygame.Vector2(1.0, 0.0)
+        )
+        muzzle_point = origin + (direction_vector * 20.0)
+        self.confetti.spawn_burst(
+            muzzle_point,
+            count=5,
+            speed_min=90.0,
+            speed_max=160.0,
+            lifetime_min=0.12,
+            lifetime_max=0.2,
+        )
+        self._spawn_pulse_centers.append((int(muzzle_point.x), int(muzzle_point.y)))
+
+    def _spawn_bottle_rocket_impact_feedback(
+        self,
+        center: pygame.Vector2,
+        *,
+        impact_scale: float = 1.0,
+        end_of_range: bool = False,
+    ) -> None:
+        scale = max(0.5, float(impact_scale))
+        if end_of_range:
+            self.confetti.spawn_burst(
+                center,
+                count=max(4, int(6 * scale)),
+                speed_min=105.0 * scale,
+                speed_max=195.0 * scale,
+                lifetime_min=0.14,
+                lifetime_max=0.24,
+            )
+            self.confetti.spawn_burst(
+                center,
+                count=max(3, int(4 * scale)),
+                speed_min=185.0 * scale,
+                speed_max=295.0 * scale,
+                lifetime_min=0.12,
+                lifetime_max=0.2,
+            )
+        else:
+            self.confetti.spawn_burst(
+                center,
+                count=max(4, int(7 * scale)),
+                speed_min=120.0 * scale,
+                speed_max=220.0 * scale,
+                lifetime_min=0.12,
+                lifetime_max=0.24,
+            )
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+
+    def _apply_bottle_rocket_recoil(self, direction: pygame.Vector2) -> None:
+        direction_vector = (
+            pygame.Vector2(direction).normalize()
+            if pygame.Vector2(direction).length_squared() > 0.0
+            else pygame.Vector2(1.0, 0.0)
+        )
+        self.player.position -= direction_vector * 4.0
+        max_x = self.bounds.width - self.player.size
+        max_y = self.bounds.height - self.player.size
+        self.player.position.x = max(0.0, min(self.player.position.x, max_x))
+        self.player.position.y = max(0.0, min(self.player.position.y, max_y))
+
+    def _current_bottle_rocket_flight_profile(self) -> BottleRocketFlightProfile:
+        """Hook for future bottle rocket upgrades that alter flight behavior."""
+        return BottleRocketFlightProfile(
+            wobble_degrees=self.BOTTLE_ROCKET_WOBBLE_DEGREES,
+            wobble_frequency_hz=self.BOTTLE_ROCKET_WOBBLE_FREQUENCY_HZ,
+            acceleration_per_second=self.BOTTLE_ROCKET_ACCEL_PER_SECOND,
+            max_speed_multiplier=self.BOTTLE_ROCKET_MAX_SPEED_MULTIPLIER,
+            decay_start_life_fraction=self.BOTTLE_ROCKET_DECAY_START_FRACTION,
+            speed_decay_per_second=self.BOTTLE_ROCKET_DECAY_SPEED_PER_SECOND,
+            downward_arc_per_second=self.BOTTLE_ROCKET_DOWNWARD_ARC_PER_SECOND,
+        )
+
     def _apply_player_contact_damage(self) -> bool:
-        took_damage = self.player.apply_damage(1)
+        incoming_damage = max(1, int(round(1 * self._character_incoming_damage_mult)))
+        took_damage = self.player.apply_damage(incoming_damage)
         if took_damage:
             self._pending_player_damage_sfx_count += 1
         return self.player.current_health <= 0

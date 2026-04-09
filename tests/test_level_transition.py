@@ -44,8 +44,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         initial_speed = hazard.speed
         initial_snapshot = dict(hazard.spawn_snapshot or {})
         initial_profile = dict(hazard.spawn_profile or {})
-        session.elapsed_time = 29.9
-        session.score_seconds = 29.9
+        session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
 
         session.update_playing(2.5, pygame.Vector2(0, 0), attack=False)
 
@@ -77,8 +76,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         boss_health = boss.health
         session.hazards = [tracker, boss]
 
-        session.elapsed_time = 29.9
-        session.score_seconds = 29.9
+        session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.update_playing(2.5, pygame.Vector2(0, 0), attack=False)
 
         self.assertEqual((tracker.retarget_interval, tracker.max_retargets), tracker_behavior)
@@ -97,8 +95,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         )
         session.hazards = [existing]
 
-        session.elapsed_time = 29.9
-        session.score_seconds = 29.9
+        session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.update_playing(2.5, pygame.Vector2(0, 0), attack=False)
 
         spawned = [hazard for hazard in session.hazards if hazard is not existing]
@@ -113,7 +110,8 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
 
     def test_boss_spawns_with_velocity_and_moves(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
-        session.elapsed_time = 119.9
+        for _ in range(4):
+            session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.score_seconds = 0.0
 
         session.update_playing(0.2, pygame.Vector2(0, 0), attack=False)
@@ -261,6 +259,36 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
             hits += 1
         self.assertEqual(hits, 4)
 
+    def test_boss_defeat_celebration_does_not_change_xp_based_level(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        for _ in range(4):
+            session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
+        session.score_seconds = 0.0
+        start_score = session.score_value
+
+        boss = BossBalloon(speed=120.0, max_health=1, damage_per_hit=1)
+        boss.position = pygame.Vector2(200.0, 200.0)
+        session.hazards = [boss]
+        session._boss_active = True
+
+        session.projectiles = [
+            Projectile(
+                position=pygame.Vector2(boss.rect.center),
+                direction=pygame.Vector2(1.0, 0.0),
+                speed=0.0,
+                lifetime=1.0,
+                size=8,
+            )
+        ]
+        session._check_projectile_collisions()
+        self.assertTrue(session.boss_celebration_active)
+        post_defeat_level = session.current_level
+
+        session.update_playing(session.BOSS_CELEBRATION_TIME + 0.05, pygame.Vector2(0.0, 0.0), attack=False)
+
+        self.assertEqual(session.current_level, post_defeat_level)
+        self.assertGreater(session.score_value, start_score)
+
     def test_unknown_boss_variant_falls_back_to_classic(self) -> None:
         boss = BossBalloon(speed=120.0, profile_id="nonexistent_variant")
         self.assertEqual(boss.profile_id, "classic")
@@ -274,7 +302,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
             boss_variant_id="bulwark",
         )
         self.assertEqual(boss.profile_id, "bulwark")
-        self.assertEqual(boss.max_health, 5)
+        self.assertEqual(boss.max_health, 7)
         self.assertEqual(boss.damage_per_hit, 1)
         self.assertIsNotNone(boss.spawn_profile)
         self.assertEqual(boss.spawn_profile.get("boss_variant_id"), "bulwark")
@@ -286,7 +314,8 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
                 return "bulwark"
 
         session = _VariantSession(self.bounds, hazard_count=0)
-        session.elapsed_time = 119.9
+        for _ in range(4):
+            session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.score_seconds = 0.0
         session.update_playing(0.2, pygame.Vector2(0, 0), attack=False)
         bosses = [hazard for hazard in session.hazards if isinstance(hazard, BossBalloon)]
@@ -457,7 +486,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         ]
         did_game_over = session.update_playing(0.05, pygame.Vector2(0.0, 0.0), attack=False)
         self.assertFalse(did_game_over)
-        self.assertEqual(session.player.current_health, 2)
+        self.assertEqual(session.player.current_health, session.player.max_health - 1)
 
     def test_confetti_sprays_expire_and_cleanup_correctly(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
@@ -510,6 +539,23 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         session.start_new_run(start_level=-5)
         self.assertEqual(session.current_level, MIN_START_LEVEL)
         self.assertEqual(clamp_selected_start_level(0), MIN_START_LEVEL)
+
+    def test_time_and_score_progress_do_not_increase_level_without_xp(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        initial_level = session.current_level
+        session.score_seconds = 1400.0
+        session.elapsed_time = 999.0
+        session.update_playing(1.0, pygame.Vector2(0.0, 0.0), attack=False)
+        self.assertEqual(session.current_level, initial_level)
+
+    def test_difficulty_multiplier_is_level_driven_not_time_driven(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        baseline = session.difficulty_multiplier
+        session.elapsed_time = 999.0
+        self.assertAlmostEqual(session.difficulty_multiplier, baseline, places=6)
+        for _ in range(3):
+            session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
+        self.assertGreater(session.difficulty_multiplier, baseline)
 
     def test_streamer_snake_chase_closes_distance_to_player(self) -> None:
         snake = StreamerSnake(speed=150.0, segment_count=7)
@@ -567,7 +613,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         session.hazards = [snake]
         collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
         self.assertFalse(collided)
-        self.assertEqual(session.player.current_health, 2)
+        self.assertEqual(session.player.current_health, session.player.max_health - 1)
 
     def test_streamer_snake_collision_path_applies_single_damage_hit(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
@@ -580,7 +626,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         session.hazards = [snake]
         collided = session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
         self.assertIs(collided, False)
-        self.assertEqual(session.player.current_health, 2)
+        self.assertEqual(session.player.current_health, session.player.max_health - 1)
 
     def test_streamer_snake_tail_history_stays_bounded_over_time(self) -> None:
         snake = StreamerSnake(speed=145.0, segment_count=8, segment_spacing=18.0)

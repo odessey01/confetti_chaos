@@ -22,6 +22,7 @@ class SettingsValidationTests(unittest.TestCase):
             path = pathlib.Path(tmpdir) / "settings.json"
             original = RuntimeSettings(
                 music_enabled=False,
+                aim_assist_enabled=False,
                 selected_start_level=4,
                 master_volume=0.6,
                 music_volume=0.5,
@@ -32,6 +33,7 @@ class SettingsValidationTests(unittest.TestCase):
 
             loaded = load_settings(path=path)
             self.assertFalse(loaded.music_enabled)
+            self.assertFalse(loaded.aim_assist_enabled)
             self.assertEqual(loaded.selected_start_level, 4)
             self.assertAlmostEqual(loaded.master_volume, 0.6)
             self.assertAlmostEqual(loaded.music_volume, 0.5)
@@ -43,6 +45,7 @@ class SettingsValidationTests(unittest.TestCase):
             path = pathlib.Path(tmpdir) / "settings.json"
             loaded = load_settings(path=path)
             self.assertTrue(loaded.music_enabled)
+            self.assertTrue(loaded.aim_assist_enabled)
             self.assertEqual(loaded.selected_start_level, 1)
             self.assertAlmostEqual(loaded.master_volume, 0.8)
             self.assertAlmostEqual(loaded.music_volume, 0.7)
@@ -55,6 +58,7 @@ class SettingsValidationTests(unittest.TestCase):
             path.write_text("{bad-json", encoding="utf-8")
             loaded = load_settings(path=path)
             self.assertTrue(loaded.music_enabled)
+            self.assertTrue(loaded.aim_assist_enabled)
             self.assertEqual(loaded.selected_start_level, 1)
             self.assertAlmostEqual(loaded.master_volume, 0.8)
             self.assertAlmostEqual(loaded.music_volume, 0.7)
@@ -66,7 +70,7 @@ class SettingsValidationTests(unittest.TestCase):
             path = pathlib.Path(tmpdir) / "settings.json"
             path.write_text(
                 (
-                    '{"music_enabled": false, "selected_start_level": -3, '
+                    '{"music_enabled": false, "aim_assist_enabled": false, "selected_start_level": -3, '
                     '"master_volume": 2.0, "music_volume": -0.1, '
                     '"sfx_volume": "bad", "ambient_volume": 0.25}'
                 ),
@@ -74,6 +78,7 @@ class SettingsValidationTests(unittest.TestCase):
             )
             loaded = load_settings(path=path)
             self.assertFalse(loaded.music_enabled)
+            self.assertFalse(loaded.aim_assist_enabled)
             self.assertEqual(loaded.selected_start_level, 1)
             self.assertAlmostEqual(loaded.master_volume, 1.0)
             self.assertAlmostEqual(loaded.music_volume, 0.0)

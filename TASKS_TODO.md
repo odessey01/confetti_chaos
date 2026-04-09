@@ -6,6 +6,12 @@ Goal: Deliver a minimal, playable game loop that can be launched, played, failed
 
 ---
 
+add sparkler as melee
+add bottle rocket as ranged
+add dodge
+add thematic passive per character
+add thematic supers per character 
+
 more pinata-ey
 add life to hero
 pinata - Lollipops for additional life

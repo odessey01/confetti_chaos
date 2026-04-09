@@ -40,6 +40,13 @@ class PlayerHealthValidationTests(unittest.TestCase):
         player.set_health(-10)
         self.assertEqual(player.current_health, 0)
 
+    def test_grant_invulnerability_applies_and_preserves_longer_duration(self) -> None:
+        player = Player(0.0, 0.0)
+        player.grant_invulnerability(0.5)
+        self.assertTrue(player.is_invulnerable)
+        player.grant_invulnerability(0.25)
+        self.assertGreaterEqual(player.damage_cooldown_remaining, 0.5)
+
     def test_session_damage_audio_cue_emits_on_player_hit(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)
         session.player.position.update(100, 100)

@@ -97,6 +97,35 @@ class UiRenderer:
         detail = self._body_font.render(f"XP {current_xp}/{xp_to_next}", True, self._prompt_color)
         surface.blit(detail, (bar_x, bar_y + 20))
 
+    def draw_super_meter(
+        self,
+        surface: pygame.Surface,
+        *,
+        charge: int,
+        max_charge: int,
+        ready: bool,
+    ) -> None:
+        label_text = "Super READY" if ready else "Super"
+        label_color = (255, 236, 142) if ready else self._score_color
+        label = self._score_font.render(label_text, True, label_color)
+        surface.blit(label, (20, 130))
+
+        bar_x = 20
+        bar_y = 168
+        bar_w = 260
+        bar_h = 14
+        pygame.draw.rect(surface, (35, 45, 58), (bar_x, bar_y, bar_w, bar_h), border_radius=5)
+        if max_charge > 0:
+            ratio = max(0.0, min(charge / max_charge, 1.0))
+        else:
+            ratio = 0.0
+        fill_w = int(bar_w * ratio)
+        fill_color = (255, 215, 105) if ready else (165, 205, 255)
+        pygame.draw.rect(surface, fill_color, (bar_x, bar_y, fill_w, bar_h), border_radius=5)
+        pygame.draw.rect(surface, (220, 240, 248), (bar_x, bar_y, bar_w, bar_h), width=1, border_radius=5)
+        detail = self._body_font.render(f"{charge}/{max_charge}", True, self._prompt_color)
+        surface.blit(detail, (bar_x, bar_y + 18))
+
     def draw_boss_victory(self, surface: pygame.Surface, bonus: int) -> None:
         title_surface = self._title_font.render("BOSS DEFEATED!", True, (255, 215, 120))
         title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 40))
@@ -124,6 +153,7 @@ class UiRenderer:
         options: tuple[str, ...],
         selected_index: int,
         music_enabled: bool,
+        aim_assist_enabled: bool,
         selected_start_level: int,
     ) -> None:
         center_x = surface.get_width() // 2
@@ -137,6 +167,8 @@ class UiRenderer:
             label = option
             if option == "Toggle Sound":
                 label = f"Toggle Sound: {'On' if music_enabled else 'Off'}"
+            elif option == "Toggle Aim Assist":
+                label = f"Toggle Aim Assist: {'On' if aim_assist_enabled else 'Off'}"
             elif option == "Level Select":
                 label = f"Level Select: {selected_start_level}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
@@ -166,8 +198,13 @@ class UiRenderer:
         *,
         selected_index: int,
         options: tuple[str, ...],
+        option_enabled: tuple[bool, ...] | None = None,
         selected_name: str,
         selected_note: str,
+        passive_bonus: str,
+        passive_drawback: str,
+        passive_summary: str | None = None,
+        selected_weapon_name: str | None = None,
     ) -> None:
         center_x = surface.get_width() // 2
         center_y = surface.get_height() // 2
@@ -176,22 +213,58 @@ class UiRenderer:
         title_rect = title_surface.get_rect(center=(center_x, 90))
         surface.blit(title_surface, title_rect)
 
+        enabled_flags = (
+            option_enabled
+            if option_enabled is not None and len(option_enabled) == len(options)
+            else tuple(True for _ in options)
+        )
         for idx, name in enumerate(options):
-            color = (255, 235, 140) if idx == selected_index else self._prompt_color
-            item = self._prompt_font.render(name, True, color)
-            item_rect = item.get_rect(center=(center_x, center_y + 120 + (idx * 36)))
+            enabled = bool(enabled_flags[idx])
+            label = name if enabled else f"{name} (Locked)"
+            if not enabled:
+                color = (126, 134, 146)
+            elif idx == selected_index:
+                color = (255, 235, 140)
+            else:
+                color = self._prompt_color
+            item = self._prompt_font.render(label, True, color)
+            item_rect = item.get_rect(center=(center_x, center_y + 186 + (idx * 36)))
             surface.blit(item, item_rect)
 
         selected_label = self._prompt_font.render(f"Selected: {selected_name}", True, (245, 248, 250))
-        selected_label_rect = selected_label.get_rect(center=(center_x, center_y - 92))
+        selected_label_rect = selected_label.get_rect(center=(center_x, center_y + 26))
         surface.blit(selected_label, selected_label_rect)
 
-        note_surface = self._body_font.render(selected_note, True, self._prompt_color)
-        note_rect = note_surface.get_rect(center=(center_x, center_y - 56))
-        surface.blit(note_surface, note_rect)
+        text_y = center_y + 58
+        if selected_note:
+            note_surface = self._body_font.render(selected_note, True, self._prompt_color)
+            note_rect = note_surface.get_rect(center=(center_x, text_y))
+            surface.blit(note_surface, note_rect)
+            text_y += 32
+
+        if passive_summary:
+            summary_surface = self._body_font.render(passive_summary, True, (235, 240, 248))
+            summary_rect = summary_surface.get_rect(center=(center_x, text_y))
+            surface.blit(summary_surface, summary_rect)
+            text_y += 30
+        else:
+            bonus_surface = self._body_font.render(f"Bonus: {passive_bonus}", True, (168, 238, 180))
+            bonus_rect = bonus_surface.get_rect(center=(center_x, text_y))
+            surface.blit(bonus_surface, bonus_rect)
+            text_y += 30
+
+            drawback_surface = self._body_font.render(f"Drawback: {passive_drawback}", True, (255, 190, 190))
+            drawback_rect = drawback_surface.get_rect(center=(center_x, text_y + 28))
+            surface.blit(drawback_surface, drawback_rect)
+            text_y += 28
+
+        if selected_weapon_name:
+            weapon_surface = self._body_font.render(f"Weapon: {selected_weapon_name}", True, (255, 228, 150))
+            weapon_rect = weapon_surface.get_rect(center=(center_x, text_y + 30))
+            surface.blit(weapon_surface, weapon_rect)
 
         prompt_surface = self._prompt_font.render(
-            "Left/Right or A/D to choose | Enter/Space to start",
+            "Left/Right or A/D to choose | T or LB/RB to toggle weapon | Enter/Space to start",
             True,
             self._prompt_color,
         )
@@ -202,6 +275,7 @@ class UiRenderer:
         self,
         surface: pygame.Surface,
         audio_enabled: bool,
+        aim_assist_enabled: bool,
         options: tuple[str, ...],
         selected_index: int,
     ) -> None:
@@ -219,6 +293,8 @@ class UiRenderer:
             label = option
             if option == "Toggle Sound":
                 label = f"Toggle Sound: {'On' if audio_enabled else 'Off'}"
+            elif option == "Toggle Aim Assist":
+                label = f"Toggle Aim Assist: {'On' if aim_assist_enabled else 'Off'}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
             option_surface = self._prompt_font.render(label, True, color)
             option_rect = option_surface.get_rect(center=(center_x, center_y - 30 + (idx * 40)))
@@ -246,7 +322,7 @@ class UiRenderer:
         title_rect = title.get_rect(center=(center_x, 110))
         surface.blit(title, title_rect)
 
-        subtitle = self._prompt_font.render("Choose 1 Upgrade", True, self._prompt_color)
+        subtitle = self._prompt_font.render("Pick 1 Upgrade", True, self._prompt_color)
         surface.blit(subtitle, subtitle.get_rect(center=(center_x, 160)))
 
         card_w = min(360, (surface.get_width() - 120) // max(1, len(options)))
@@ -266,14 +342,10 @@ class UiRenderer:
 
             name = getattr(option, "name", str(option))
             desc = getattr(option, "description", "")
-            effects = getattr(option, "effect_values", {})
-            effect_summary = ", ".join(f"{k}: +{v:g}" for k, v in effects.items()) if effects else ""
             name_surface = self._prompt_font.render(name, True, (245, 248, 250))
             surface.blit(name_surface, (x + 14, y + 16))
             desc_surface = self._body_font.render(desc, True, (216, 229, 242))
-            surface.blit(desc_surface, (x + 14, y + 70))
-            summary_surface = self._body_font.render(effect_summary, True, (255, 227, 145))
-            surface.blit(summary_surface, (x + 14, y + 120))
+            surface.blit(desc_surface, (x + 14, y + 82))
 
-        hint = self._body_font.render("Up/Down (or Left/Right) to select, Enter/A to confirm", True, self._prompt_color)
+        hint = self._body_font.render("Arrows/Stick to choose, Enter/A to confirm", True, self._prompt_color)
         surface.blit(hint, hint.get_rect(center=(center_x, y + card_h + 40)))

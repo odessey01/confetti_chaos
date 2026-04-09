@@ -56,17 +56,19 @@ class _FakeVisualFeedback:
 
 class PauseMenuValidationTests(unittest.TestCase):
     def test_pause_menu_index_wraps(self) -> None:
-        self.assertEqual(next_pause_menu_index(0, -1), 3)
-        self.assertEqual(next_pause_menu_index(3, 1), 0)
+        self.assertEqual(next_pause_menu_index(0, -1), 4)
+        self.assertEqual(next_pause_menu_index(4, 1), 0)
 
     def test_pause_menu_action_mapping(self) -> None:
         self.assertEqual(pause_menu_action_for_index(0), PauseMenuAction.RESUME)
         self.assertEqual(pause_menu_action_for_index(1), PauseMenuAction.RESTART)
         self.assertEqual(pause_menu_action_for_index(2), PauseMenuAction.TOGGLE_SOUND)
-        self.assertEqual(pause_menu_action_for_index(3), PauseMenuAction.QUIT_TO_MENU)
+        self.assertEqual(pause_menu_action_for_index(3), PauseMenuAction.TOGGLE_AIM_ASSIST)
+        self.assertEqual(pause_menu_action_for_index(4), PauseMenuAction.QUIT_TO_MENU)
         self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.RESUME), "ui_resume")
         self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.RESTART), "ui_confirm")
         self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.TOGGLE_SOUND), "ui_toggle_settings")
+        self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.TOGGLE_AIM_ASSIST), "ui_toggle_settings")
         self.assertEqual(ui_sfx_for_pause_action(PauseMenuAction.QUIT_TO_MENU), "ui_back")
 
     def test_should_update_playing_freeze_gate(self) -> None:
@@ -122,6 +124,19 @@ class PauseMenuValidationTests(unittest.TestCase):
         self.assertFalse(settings.music_enabled)
         self.assertFalse(audio.enabled)
         self.assertEqual(saved["count"], 1)
+
+        toggled_aim = execute_pause_menu_action(
+            PauseMenuAction.TOGGLE_AIM_ASSIST,
+            state=GameState.PAUSED,
+            session=session,
+            runtime_settings=settings,
+            audio=audio,
+            visual_feedback=visual_feedback,
+            save_hook=_save_hook,
+        )
+        self.assertEqual(toggled_aim, GameState.PAUSED)
+        self.assertFalse(settings.aim_assist_enabled)
+        self.assertEqual(saved["count"], 2)
 
         menu_state = execute_pause_menu_action(
             PauseMenuAction.QUIT_TO_MENU,

@@ -464,3 +464,44 @@ class SpawnControllerValidationTests(unittest.TestCase):
         self.assertAlmostEqual(summary["enemy_kind_distribution"]["balloon"], 1 / 3, places=6)
         self.assertAlmostEqual(summary["enemy_kind_distribution"]["boss_balloon"], 1 / 3, places=6)
         self.assertEqual(summary["boss_override_events"], 1)
+
+    def test_sampled_enemy_sizes_stay_within_defined_ranges(self) -> None:
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(bounds, rng=DeterministicRng([0.5]))
+        for enemy_kind, (min_size, max_size) in controller.SIZE_RANGES.items():
+            for _ in range(10):
+                sampled = controller._sample_size(enemy_kind)
+                self.assertGreaterEqual(sampled, min_size)
+                self.assertLessEqual(sampled, max_size)
+
+    def test_balloon_spawn_profile_records_variable_size(self) -> None:
+        class _UniformSequenceRng:
+            def __init__(self) -> None:
+                self.uniform_values = [56.0, 84.0]
+                self.uniform_idx = 0
+
+            def random(self) -> float:
+                return 0.1
+
+            def choice(self, seq: tuple[str, ...] | list[str]) -> str:
+                return seq[0]
+
+            def uniform(self, a: float, b: float) -> float:
+                value = self.uniform_values[self.uniform_idx % len(self.uniform_values)]
+                self.uniform_idx += 1
+                return value
+
+        bounds = pygame.Rect(0, 0, 1280, 720)
+        controller = SpawnController(
+            bounds,
+            tracking_spawn_chance=0.0,
+            balloon_spawn_chance=1.0,
+            rng=_UniformSequenceRng(),
+        )
+        first = controller.create_hazard_for_spawn(tier=1, base_speed=220.0, flavor_tag="STANDARD")
+        second = controller.create_hazard_for_spawn(tier=1, base_speed=220.0, flavor_tag="STANDARD")
+        self.assertIsInstance(first, BalloonEnemy)
+        self.assertIsInstance(second, BalloonEnemy)
+        self.assertIn("size", first.spawn_profile)
+        self.assertIn("size", second.spawn_profile)
+        self.assertNotEqual(int(first.spawn_profile["size"]), int(second.spawn_profile["size"]))

@@ -35,12 +35,22 @@ class PartyAnimalIntegrationTests(unittest.TestCase):
         session.start_new_run(player_animal_id="bunny_f")
         self.assertEqual(session.active_player_animal_id, "bunny_f")
         self.assertEqual(session.player.visual_variant_id, "bunny_f")
+        self.assertEqual(session.active_character_passive_id, "bunny_f")
 
     def test_start_new_run_falls_back_to_teddy_on_invalid_selection(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)
         session.start_new_run(player_animal_id="invalid_variant")
         self.assertEqual(session.active_player_animal_id, "teddy_f")
         self.assertEqual(session.player.visual_variant_id, "teddy_f")
+        self.assertEqual(session.active_character_passive_id, "teddy_f")
+
+    def test_active_character_passive_snapshot_matches_selected_character(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)
+        session.start_new_run(player_animal_id="cat_f")
+        snapshot = session.active_character_passive_snapshot()
+        self.assertEqual(snapshot["character_id"], "cat_f")
+        self.assertIn("passive_bonus", snapshot)
+        self.assertIn("passive_drawback", snapshot)
 
     def test_debug_overlay_draws(self) -> None:
         if not pygame.get_init():

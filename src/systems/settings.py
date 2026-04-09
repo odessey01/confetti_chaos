@@ -25,6 +25,7 @@ def clamp_volume(value: float) -> float:
 @dataclass
 class RuntimeSettings:
     music_enabled: bool = True
+    aim_assist_enabled: bool = True
     selected_start_level: int = 1
     master_volume: float = 0.8
     music_volume: float = 0.7
@@ -45,6 +46,7 @@ class RuntimeSettings:
     def to_payload(self) -> dict[str, object]:
         return {
             "music_enabled": bool(self.music_enabled),
+            "aim_assist_enabled": bool(self.aim_assist_enabled),
             "selected_start_level": clamp_selected_start_level(self.selected_start_level),
             "master_volume": clamp_volume(self.master_volume),
             "music_volume": clamp_volume(self.music_volume),
@@ -72,6 +74,7 @@ def load_settings(path: Path | None = None) -> RuntimeSettings:
         return defaults
 
     music_enabled = payload.get("music_enabled", defaults.music_enabled)
+    aim_assist_enabled = payload.get("aim_assist_enabled", defaults.aim_assist_enabled)
     selected_start_level = payload.get("selected_start_level", defaults.selected_start_level)
     master_volume = payload.get("master_volume", defaults.master_volume)
     music_volume = payload.get("music_volume", defaults.music_volume)
@@ -85,6 +88,7 @@ def load_settings(path: Path | None = None) -> RuntimeSettings:
 
     return RuntimeSettings(
         music_enabled=bool(music_enabled),
+        aim_assist_enabled=bool(aim_assist_enabled),
         selected_start_level=(
             clamp_selected_start_level(selected_start_level)
             if isinstance(selected_start_level, int)

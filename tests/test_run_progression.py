@@ -42,7 +42,7 @@ class RunProgressionValidationTests(unittest.TestCase):
         self.assertEqual(progression.pending_level_ups, 0)
         self.assertEqual(progression.xp_to_next_level, 90)
 
-    def test_game_session_awards_xp_for_enemy_kills(self) -> None:
+    def test_game_session_enemy_kills_spawn_xp_drops_without_instant_xp_gain(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         balloon = BalloonEnemy(speed=120.0)
         balloon.position = pygame.Vector2(220, 220)
@@ -58,10 +58,14 @@ class RunProgressionValidationTests(unittest.TestCase):
         ]
         before_xp = session.run_progress_snapshot()["xp"]
         session._check_projectile_collisions()
-        after_xp = session.run_progress_snapshot()["xp"]
-        self.assertGreater(after_xp, before_xp)
+        after_snapshot = session.run_progress_snapshot()
+        after_xp = after_snapshot["xp"]
+        self.assertEqual(after_xp, before_xp)
+        self.assertEqual(len(session.xp_drops), 1)
+        self.assertEqual(session.xp_drops[0].xp_value, session.XP_REWARDS["balloon"])
+        self.assertEqual(int(after_snapshot["run_level"]), 1)
 
-    def test_boss_defeat_grants_large_xp_bonus(self) -> None:
+    def test_boss_defeat_spawns_large_xp_drop(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         boss = BossBalloon(speed=120.0, max_health=2, damage_per_hit=1)
         boss.position = pygame.Vector2(220, 220)
@@ -73,11 +77,33 @@ class RunProgressionValidationTests(unittest.TestCase):
         before_snapshot = session.run_progress_snapshot()
         session._check_projectile_collisions()
         after_snapshot = session.run_progress_snapshot()
-        self.assertGreaterEqual(int(after_snapshot["run_level"]), int(before_snapshot["run_level"]))
-        self.assertTrue(
-            int(after_snapshot["xp"]) > int(before_snapshot["xp"])
-            or int(after_snapshot["run_level"]) > int(before_snapshot["run_level"])
-        )
+        self.assertEqual(int(after_snapshot["run_level"]), int(before_snapshot["run_level"]))
+        self.assertEqual(int(after_snapshot["xp"]), int(before_snapshot["xp"]))
+        self.assertEqual(len(session.xp_drops), 1)
+        self.assertEqual(session.xp_drops[0].xp_value, session.XP_REWARDS["boss_balloon"])
+
+    def test_boss_xp_reward_is_larger_than_standard_balloon(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        self.assertGreater(session.XP_REWARDS["boss_balloon"], session.XP_REWARDS["balloon"])
+
+    def test_collecting_balloon_drop_advances_progress_gradually(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        player_center = pygame.Vector2(session.player_collision_rect().center)
+        for _ in range(2):
+            session._spawn_xp_drop(player_center, xp_value=session.XP_DROP_VALUES["balloon"])
+            session._collect_xp_drops(session.player_collision_rect())
+        snapshot = session.run_progress_snapshot()
+        self.assertEqual(int(snapshot["run_level"]), 1)
+        self.assertGreater(int(snapshot["xp"]), 0)
+
+    def test_collecting_single_boss_drop_advances_only_one_level(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        player_center = pygame.Vector2(session.player_collision_rect().center)
+        session._spawn_xp_drop(player_center, xp_value=session.XP_DROP_VALUES["boss_balloon"])
+        session._collect_xp_drops(session.player_collision_rect())
+        snapshot = session.run_progress_snapshot()
+        self.assertEqual(int(snapshot["run_level"]), 2)
+        self.assertEqual(int(snapshot["pending_level_ups"]), 1)
 
     def test_projectile_cap_starts_at_three_active_and_blocks_fourth(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
