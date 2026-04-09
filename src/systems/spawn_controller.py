@@ -35,6 +35,7 @@ class RandomLike(Protocol):
 class EnemySpawnProfile:
     tier: int
     speed: float
+    size: int
     health: int
     movement_profile: str
     flavor_tag: str
@@ -77,6 +78,14 @@ class SnakeFlavorProfile:
 
 
 class SpawnController:
+    SIZE_RANGES: dict[str, tuple[int, int]] = {
+        "tracking": (56, 84),
+        "balloon": (56, 84),
+        "pinata": (66, 96),
+        "confetti_sprayer": (50, 76),
+        "streamer_snake": (46, 68),
+        "boss_balloon": (92, 118),
+    }
     MIN_PINATA_CHANCE = 0.04
     MAX_PINATA_CHANCE = 0.26
     PINATA_RAMP_START_TIER = 3
@@ -296,15 +305,18 @@ class SpawnController:
         variant_id: str = "wanderer",
     ) -> StreamerSnake:
         resolved_variant = str(variant_id) if str(variant_id) in StreamerSnake.VARIANT_PROFILES else "wanderer"
+        snake_size = self._sample_size("streamer_snake")
         profile = EnemySpawnProfile(
             tier=tier,
             speed=base_speed * 0.66,
+            size=snake_size,
             health=1,
             movement_profile=f"streamer_{resolved_variant}",
             flavor_tag=flavor_tag,
             enemy_kind="streamer_snake",
         )
         snake = StreamerSnake(
+            size=snake_size,
             speed=profile.speed,
             segment_count=segment_count,
             variant_id=resolved_variant,
@@ -346,20 +358,24 @@ class SpawnController:
         snake_threshold = sprayer_threshold + snake_share
         balloon_threshold = snake_threshold + balloon_share
         if roll < tracking_threshold:
+            tracking_size = self._sample_size("tracking")
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.7,
+                size=tracking_size,
                 health=1,
                 movement_profile="tracking_homing",
                 flavor_tag=flavor_tag,
                 enemy_kind="tracking",
             )
-            hazard = TrackingHazard(speed=profile.speed)
+            hazard = TrackingHazard(size=tracking_size, speed=profile.speed)
         elif roll < sprayer_threshold:
             sprayer_attack = self._sprayer_attack_profile_for_flavor(flavor_tag)
+            sprayer_size = self._sample_size("confetti_sprayer")
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.68,
+                size=sprayer_size,
                 health=1,
                 movement_profile="sprayer_glide",
                 flavor_tag=flavor_tag,
@@ -369,7 +385,7 @@ class SpawnController:
                 spray_projectile_count=sprayer_attack.projectile_count,
                 spray_projectile_speed=sprayer_attack.projectile_speed,
             )
-            hazard = ConfettiSprayer(speed=profile.speed)
+            hazard = ConfettiSprayer(size=sprayer_size, speed=profile.speed)
             hazard.configure_attack_profile(
                 cooldown=sprayer_attack.cooldown,
                 spray_angle=sprayer_attack.spray_angle,
@@ -379,9 +395,11 @@ class SpawnController:
         elif roll < snake_threshold:
             snake_flavor_profile = self._snake_profile_for_flavor(flavor_tag, tier=tier)
             snake_variant = snake_flavor_profile.variant_id
+            snake_size = self._sample_size("streamer_snake")
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.62 * snake_flavor_profile.speed_multiplier,
+                size=snake_size,
                 health=1,
                 movement_profile=f"streamer_{snake_variant}",
                 flavor_tag=flavor_tag,
@@ -391,26 +409,31 @@ class SpawnController:
                 snake_segment_spacing=snake_flavor_profile.segment_spacing,
             )
             hazard = StreamerSnake(
+                size=snake_size,
                 speed=profile.speed,
                 segment_count=snake_flavor_profile.segment_count,
                 segment_spacing=snake_flavor_profile.segment_spacing,
                 variant_id=snake_variant,
             )
         elif roll < balloon_threshold:
+            balloon_size = self._sample_size("balloon")
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * 0.75,
+                size=balloon_size,
                 health=1,
                 movement_profile="balloon_drift",
                 flavor_tag=flavor_tag,
                 enemy_kind="balloon",
             )
-            hazard = BalloonEnemy(speed=profile.speed)
+            hazard = BalloonEnemy(size=balloon_size, speed=profile.speed)
         else:
             pinata_variant = self._pinata_variant_for_tier(tier)
+            pinata_size = self._sample_size("pinata")
             profile = EnemySpawnProfile(
                 tier=tier,
                 speed=base_speed * pinata_variant.speed_multiplier,
+                size=pinata_size,
                 health=pinata_variant.health,
                 movement_profile="pinata_heavy_drift",
                 flavor_tag=flavor_tag,
@@ -418,7 +441,12 @@ class SpawnController:
                 break_confetti_count=pinata_variant.break_confetti_count,
                 mini_spawn_count=pinata_variant.mini_spawn_count,
             )
-            hazard = PinataEnemy(speed=profile.speed, max_health=profile.health, damage_per_hit=1)
+            hazard = PinataEnemy(
+                size=pinata_size,
+                speed=profile.speed,
+                max_health=profile.health,
+                damage_per_hit=1,
+            )
         hazard.apply_spawn_profile(self._profile_to_dict(profile))
         return hazard
 
@@ -558,9 +586,11 @@ class SpawnController:
         boss_variant_id: str = "classic",
     ) -> BossBalloon:
         resolved_variant_id, variant_profile = BossBalloon.resolve_profile(boss_variant_id)
+        boss_size = self._sample_size("boss_balloon")
         profile = EnemySpawnProfile(
             tier=tier,
             speed=base_speed * 0.5,
+            size=boss_size,
             health=variant_profile.max_health,
             movement_profile="boss_charge",
             flavor_tag=flavor_tag,
@@ -568,6 +598,7 @@ class SpawnController:
             boss_variant_id=resolved_variant_id,
         )
         boss = BossBalloon(
+            size=boss_size,
             speed=profile.speed,
             profile_id=resolved_variant_id,
             max_health=variant_profile.max_health,
@@ -606,6 +637,7 @@ class SpawnController:
         payload: dict[str, object] = {
             "tier": profile.tier,
             "speed": profile.speed,
+            "size": profile.size,
             "health": profile.health,
             "movement_profile": profile.movement_profile,
             "flavor_tag": profile.flavor_tag,
@@ -632,6 +664,11 @@ class SpawnController:
         if profile.snake_segment_spacing is not None:
             payload["snake_segment_spacing"] = profile.snake_segment_spacing
         return payload
+
+    def _sample_size(self, enemy_kind: str) -> int:
+        min_size, max_size = self.SIZE_RANGES.get(str(enemy_kind), (54, 78))
+        sampled = self._rng.uniform(float(min_size), float(max_size))
+        return max(min_size, min(max_size, int(round(sampled))))
 
     def _normalize_tier_weight_template(
         self,

@@ -27,6 +27,24 @@ class DemoSpriteConfig:
     hitbox_vertical_offset: float
 
 
+@dataclass(frozen=True)
+class AnimatedSpriteSheetConfig:
+    sprite_sheet_path: str
+    rows: int
+    columns: int
+    loop_mode: str
+    frame_order: str
+    direction_to_row: dict[str, int]
+    direction_flip: dict[str, bool]
+    base_display_scale: float
+    anchor_offset: tuple[int, int]
+    hitbox_radius: float
+    hitbox_vertical_offset: float
+    animation_fps: float
+    extraction_mode: str = "grid"
+    bbox_guide_path: str | None = None
+
+
 TEDDY_BEAR_DEMO_CONFIG = DemoSpriteConfig(
     variant_id="bear",
     sprite_paths=DirectionalSpritePaths(
@@ -39,6 +57,62 @@ TEDDY_BEAR_DEMO_CONFIG = DemoSpriteConfig(
     anchor_offset=(0, 0),
     hitbox_radius=20.0,
     hitbox_vertical_offset=22.0,
+)
+
+
+BEAR_WALKING_ANIMATION_CONFIG = AnimatedSpriteSheetConfig(
+    sprite_sheet_path="images/player/bear/bbox_bear_walking.png",
+    rows=5,
+    columns=4,
+    extraction_mode="bbox_guide",
+    bbox_guide_path="images/player/bear/bbox_bear_walking.png",
+    loop_mode="full_sheet_loop",
+    frame_order="row_major",
+    direction_to_row={
+        "down": 0,
+        "right": 1,
+        "up": 2,
+        "left": 1,
+    },
+    direction_flip={
+        "down": False,
+        "right": False,
+        "up": False,
+        "left": True,
+    },
+    base_display_scale=0.95,
+    anchor_offset=(0, 0),
+    hitbox_radius=18.0,
+    hitbox_vertical_offset=20.0,
+    animation_fps=8.0,
+)
+
+
+BEAR_IDLE_ANIMATION_CONFIG = AnimatedSpriteSheetConfig(
+    sprite_sheet_path="images/player/bear/bbox_bear_idle.png",
+    rows=5,
+    columns=4,
+    extraction_mode="bbox_guide",
+    bbox_guide_path="images/player/bear/bbox_bear_idle.png",
+    loop_mode="full_sheet_loop",
+    frame_order="row_major",
+    direction_to_row={
+        "down": 0,
+        "right": 1,
+        "up": 2,
+        "left": 1,
+    },
+    direction_flip={
+        "down": False,
+        "right": False,
+        "up": False,
+        "left": True,
+    },
+    base_display_scale=0.95,
+    anchor_offset=(0, 0),
+    hitbox_radius=18.0,
+    hitbox_vertical_offset=20.0,
+    animation_fps=5.0,
 )
 
 
@@ -117,4 +191,3 @@ def _normalize_to_canvas(
     target_rect.midbottom = (canvas_size[0] // 2, canvas_size[1] - 1)
     canvas.blit(sprite, target_rect)
     return canvas
-

@@ -53,6 +53,8 @@ class Hazard:
         self.spawn_profile = dict(profile)
         self.set_speed(float(profile["speed"]))
         self.base_speed = self.speed
+        if "size" in profile:
+            self.size = max(8, int(profile["size"]))
         if "health" in profile and hasattr(self, "health"):
             self.health = int(profile["health"])
 

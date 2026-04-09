@@ -56,17 +56,19 @@ class _FakeVisualFeedback:
 
 class StartMenuValidationTests(unittest.TestCase):
     def test_start_menu_index_wraps(self) -> None:
-        self.assertEqual(next_start_menu_index(0, -1), 3)
-        self.assertEqual(next_start_menu_index(3, 1), 0)
+        self.assertEqual(next_start_menu_index(0, -1), 4)
+        self.assertEqual(next_start_menu_index(4, 1), 0)
 
     def test_start_menu_action_mapping(self) -> None:
         self.assertEqual(start_menu_action_for_index(0), StartMenuAction.START_GAME)
         self.assertEqual(start_menu_action_for_index(1), StartMenuAction.LEVEL_SELECT)
         self.assertEqual(start_menu_action_for_index(2), StartMenuAction.TOGGLE_SOUND)
-        self.assertEqual(start_menu_action_for_index(3), StartMenuAction.QUIT)
+        self.assertEqual(start_menu_action_for_index(3), StartMenuAction.TOGGLE_AIM_ASSIST)
+        self.assertEqual(start_menu_action_for_index(4), StartMenuAction.QUIT)
         self.assertEqual(ui_sfx_for_start_action(StartMenuAction.START_GAME), "ui_confirm")
         self.assertEqual(ui_sfx_for_start_action(StartMenuAction.LEVEL_SELECT), "ui_toggle_settings")
         self.assertEqual(ui_sfx_for_start_action(StartMenuAction.TOGGLE_SOUND), "ui_toggle_settings")
+        self.assertEqual(ui_sfx_for_start_action(StartMenuAction.TOGGLE_AIM_ASSIST), "ui_toggle_settings")
         self.assertEqual(ui_sfx_for_start_action(StartMenuAction.QUIT), "ui_back")
 
     def test_level_select_cycles(self) -> None:
@@ -126,6 +128,19 @@ class StartMenuValidationTests(unittest.TestCase):
         self.assertFalse(audio.enabled)
 
         state, running = execute_start_menu_action(
+            StartMenuAction.TOGGLE_AIM_ASSIST,
+            state=GameState.MENU,
+            session=session,
+            runtime_settings=settings,
+            audio=audio,
+            visual_feedback=visual,
+            save_hook=_save_hook,
+        )
+        self.assertEqual(state, GameState.MENU)
+        self.assertTrue(running)
+        self.assertFalse(settings.aim_assist_enabled)
+
+        state, running = execute_start_menu_action(
             StartMenuAction.QUIT,
             state=GameState.MENU,
             session=session,
@@ -136,4 +151,4 @@ class StartMenuValidationTests(unittest.TestCase):
         )
         self.assertEqual(state, GameState.MENU)
         self.assertFalse(running)
-        self.assertEqual(saved["count"], 2)
+        self.assertEqual(saved["count"], 3)

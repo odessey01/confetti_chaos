@@ -35,7 +35,7 @@ class BossVariantProfile:
 
 BOSS_VARIANT_PROFILES: dict[str, BossVariantProfile] = {
     "classic": BossVariantProfile(
-        max_health=3,
+        max_health=5,
         damage_per_hit=1,
         charge_duration=1.5,
         charge_speed_multiplier=1.35,
@@ -56,7 +56,7 @@ BOSS_VARIANT_PROFILES: dict[str, BossVariantProfile] = {
         phase_cooldown_multipliers=(1.0, 0.92, 0.84),
     ),
     "bulwark": BossVariantProfile(
-        max_health=5,
+        max_health=7,
         damage_per_hit=1,
         charge_duration=1.7,
         charge_speed_multiplier=1.25,
@@ -95,9 +95,8 @@ class BossBalloon(Hazard):
         profile_id: str = "classic",
         max_health: int | None = None,
         damage_per_hit: int | None = None,
+        size: int = 136,
     ) -> None:
-        # Boss is 2x the size of normal balloons
-        size = 136  # 68 * 2
         super().__init__(size, speed)
         self.profile_id, profile = self.resolve_profile(profile_id)
         self.max_health = max(1, int(profile.max_health if max_health is None else max_health))

@@ -9,10 +9,10 @@ from dataclasses import dataclass
 class RunProgression:
     run_level: int = 1
     xp: int = 0
-    xp_to_next_level: int = 100
+    xp_to_next_level: int = 10
     pending_level_ups: int = 0
-    base_xp_to_next: int = 100
-    growth_factor: float = 1.24
+    base_xp_to_next: int = 10
+    growth_factor: float = 1.5
 
     def reset(self) -> None:
         self.run_level = 1
@@ -58,4 +58,3 @@ class RunProgression:
         clamped = max(1, int(level))
         requirement = int(round(self.base_xp_to_next * (self.growth_factor ** (clamped - 1))))
         return max(self.base_xp_to_next, requirement)
-

@@ -40,3 +40,29 @@ class RunUpgradeSystemValidationTests(unittest.TestCase):
         upgrades = RunUpgradeSystem(rng=random.Random(17))
         upgrades.stacks["projectile_cap_up"] = 2
         self.assertFalse(upgrades.is_valid_choice("projectile_cap_up"))
+
+    def test_projectile_upgrades_are_invalid_for_sparkler_weapon_context(self) -> None:
+        upgrades = RunUpgradeSystem(rng=random.Random(19))
+        self.assertFalse(upgrades.is_valid_choice("projectile_speed_up", active_weapon_id="sparkler"))
+        self.assertFalse(upgrades.is_valid_choice("projectile_damage_up", active_weapon_id="sparkler"))
+        self.assertFalse(upgrades.is_valid_choice("projectile_cap_up", active_weapon_id="sparkler"))
+        self.assertTrue(upgrades.is_valid_choice("sparkler_range_up", active_weapon_id="sparkler"))
+        self.assertTrue(upgrades.is_valid_choice("sparkler_damage_up", active_weapon_id="sparkler"))
+        self.assertTrue(upgrades.is_valid_choice("sparkler_arc_up", active_weapon_id="sparkler"))
+        self.assertTrue(upgrades.is_valid_choice("projectile_speed_up", active_weapon_id="bottle_rocket"))
+        self.assertFalse(upgrades.is_valid_choice("sparkler_range_up", active_weapon_id="bottle_rocket"))
+        self.assertFalse(upgrades.is_valid_choice("sparkler_damage_up", active_weapon_id="bottle_rocket"))
+        self.assertFalse(upgrades.is_valid_choice("sparkler_arc_up", active_weapon_id="bottle_rocket"))
+
+    def test_generate_choices_for_sparkler_excludes_projectile_only_upgrades(self) -> None:
+        upgrades = RunUpgradeSystem(rng=random.Random(23))
+        saw_sparkler_specific = False
+        for _ in range(40):
+            choices = upgrades.generate_choices(count=3, active_weapon_id="sparkler")
+            ids = {choice.id for choice in choices}
+            self.assertNotIn("projectile_speed_up", ids)
+            self.assertNotIn("projectile_damage_up", ids)
+            self.assertNotIn("projectile_cap_up", ids)
+            if {"sparkler_range_up", "sparkler_damage_up", "sparkler_arc_up"} & ids:
+                saw_sparkler_specific = True
+        self.assertTrue(saw_sparkler_specific)

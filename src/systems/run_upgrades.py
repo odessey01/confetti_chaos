@@ -16,13 +16,14 @@ class UpgradeDefinition:
     max_stacks: int | None = None
     repeatable: bool = True
     weight: float = 1.0
+    allowed_weapon_ids: tuple[str, ...] | None = None
 
 
 UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="move_speed_up",
         name="Quick Feet",
-        description="Move faster.",
+        description="+Move speed.",
         category="player",
         effect_values={"move_speed_mult": 0.09},
         max_stacks=5,
@@ -31,7 +32,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="fire_rate_up",
         name="Rapid Pop",
-        description="Lower shot cooldown.",
+        description="+Fire rate.",
         category="weapon",
         effect_values={"fire_rate_mult": 0.11},
         max_stacks=5,
@@ -40,25 +41,27 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="projectile_speed_up",
         name="Crisp Shots",
-        description="Projectiles travel faster.",
+        description="+Rocket speed.",
         category="weapon",
         effect_values={"projectile_speed_mult": 0.12},
         max_stacks=5,
         weight=0.9,
+        allowed_weapon_ids=("bottle_rocket",),
     ),
     UpgradeDefinition(
         id="projectile_cap_up",
         name="Extra Chamber",
-        description="+1 max active projectile (max 5).",
+        description="+1 active rocket (max 5).",
         category="weapon",
         effect_values={"projectile_cap_bonus": 1.0},
         max_stacks=2,
         weight=0.65,
+        allowed_weapon_ids=("bottle_rocket",),
     ),
     UpgradeDefinition(
         id="confetti_burst_up",
         name="Party Burst",
-        description="Defeats create bigger confetti bursts.",
+        description="+Confetti burst size.",
         category="effects",
         effect_values={"confetti_bonus": 2.0},
         max_stacks=4,
@@ -67,7 +70,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="score_bonus",
         name="Spotlight Bonus",
-        description="Gain more score per defeat.",
+        description="+Score from defeats.",
         category="economy",
         effect_values={"score_mult": 0.10},
         max_stacks=5,
@@ -76,7 +79,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="enemy_slow",
         name="Sticky Floor",
-        description="Newly spawned enemies move slower.",
+        description="-Enemy move speed.",
         category="control",
         effect_values={"enemy_speed_reduction": 0.06},
         max_stacks=4,
@@ -85,11 +88,42 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
     UpgradeDefinition(
         id="projectile_damage_up",
         name="Heavy Confetti",
-        description="Projectiles deal more damage.",
+        description="+Rocket damage.",
         category="weapon",
         effect_values={"projectile_damage": 1.0},
         max_stacks=3,
         weight=0.75,
+        allowed_weapon_ids=("bottle_rocket",),
+    ),
+    UpgradeDefinition(
+        id="sparkler_range_up",
+        name="Long Spark",
+        description="+Sparkler range.",
+        category="weapon",
+        effect_values={"sparkler_range_bonus": 16.0},
+        max_stacks=4,
+        weight=0.8,
+        allowed_weapon_ids=("sparkler",),
+    ),
+    UpgradeDefinition(
+        id="sparkler_damage_up",
+        name="Hotter Sparks",
+        description="+Sparkler damage.",
+        category="weapon",
+        effect_values={"sparkler_damage_bonus": 1.0},
+        max_stacks=3,
+        weight=0.8,
+        allowed_weapon_ids=("sparkler",),
+    ),
+    UpgradeDefinition(
+        id="sparkler_arc_up",
+        name="Wide Swing",
+        description="+Sparkler swing arc.",
+        category="weapon",
+        effect_values={"sparkler_cone_bonus_degrees": 10.0},
+        max_stacks=3,
+        weight=0.75,
+        allowed_weapon_ids=("sparkler",),
     ),
 )
 
@@ -105,8 +139,12 @@ class RunUpgradeSystem:
         self.stacks.clear()
         self.current_choices = []
 
-    def generate_choices(self, *, count: int = 3) -> list[UpgradeDefinition]:
-        valid = [definition for definition in self._defs.values() if self.is_valid_choice(definition.id)]
+    def generate_choices(self, *, count: int = 3, active_weapon_id: str | None = None) -> list[UpgradeDefinition]:
+        valid = [
+            definition
+            for definition in self._defs.values()
+            if self.is_valid_choice(definition.id, active_weapon_id=active_weapon_id)
+        ]
         if not valid:
             self.current_choices = []
             return []
@@ -120,17 +158,19 @@ class RunUpgradeSystem:
         self.current_choices = picked
         return list(self.current_choices)
 
-    def apply_choice(self, upgrade_id: str) -> bool:
+    def apply_choice(self, upgrade_id: str, *, active_weapon_id: str | None = None) -> bool:
         definition = self._defs.get(upgrade_id)
-        if definition is None or not self.is_valid_choice(upgrade_id):
+        if definition is None or not self.is_valid_choice(upgrade_id, active_weapon_id=active_weapon_id):
             return False
         self.stacks[upgrade_id] = self.stacks.get(upgrade_id, 0) + 1
         self.current_choices = []
         return True
 
-    def is_valid_choice(self, upgrade_id: str) -> bool:
+    def is_valid_choice(self, upgrade_id: str, *, active_weapon_id: str | None = None) -> bool:
         definition = self._defs.get(upgrade_id)
         if definition is None:
+            return False
+        if not self._is_weapon_allowed(definition, active_weapon_id):
             return False
         current = self.stacks.get(upgrade_id, 0)
         if definition.max_stacks is not None and current >= definition.max_stacks:
@@ -163,3 +203,10 @@ class RunUpgradeSystem:
             if roll <= cumulative:
                 return definition
         return pool[-1]
+
+    def _is_weapon_allowed(self, definition: UpgradeDefinition, active_weapon_id: str | None) -> bool:
+        if not definition.allowed_weapon_ids:
+            return True
+        if active_weapon_id is None:
+            return True
+        return str(active_weapon_id) in definition.allowed_weapon_ids

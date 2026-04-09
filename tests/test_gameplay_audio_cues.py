@@ -26,8 +26,8 @@ class GameplayAudioCueValidationTests(unittest.TestCase):
     def test_level_transition_sets_audio_cue(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         session.spawn_controller.max_hazards = 0
-        session.elapsed_time = 29.9
         session.score_seconds = 0.0
+        session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
 
         session.update_playing(1.0, pygame.Vector2(0, 0), attack=False)
         cues = session.consume_audio_cues()
@@ -52,10 +52,50 @@ class GameplayAudioCueValidationTests(unittest.TestCase):
         cues = session.consume_audio_cues()
         self.assertEqual(cues["balloon_hit_count"], 1)
         self.assertEqual(cues["balloon_pop_count"], 1)
+        self.assertEqual(cues["bottle_rocket_impact_count"], 1)
+
+    def test_bottle_rocket_launch_emits_feedback_cue_and_recoil(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        session.player.position.update(300.0, 300.0)
+        original_x = session.player.position.x
+        session.fire_projectile(pygame.Vector2(1.0, 0.0))
+        cues = session.consume_audio_cues()
+        self.assertEqual(cues["bottle_rocket_launch_count"], 1)
+        self.assertGreater(len(session.confetti.particles), 0)
+        self.assertLess(session.player.position.x, original_x)
+
+    def test_bottle_rocket_expiration_emits_impact_feedback(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        session.projectiles = [
+            Projectile(
+                position=pygame.Vector2(300.0, 300.0),
+                direction=pygame.Vector2(1.0, 0.0),
+                speed=0.0,
+                lifetime=0.01,
+                size=8,
+            )
+        ]
+        session.update_playing(0.1, pygame.Vector2(0.0, 0.0), attack=False)
+        cues = session.consume_audio_cues()
+        self.assertEqual(cues["bottle_rocket_impact_count"], 1)
+        self.assertGreater(len(session.confetti.particles), 0)
+
+    def test_sparkler_swing_and_hit_emit_audio_cues(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        session.set_active_weapon("sparkler")
+        session.player.position.update(300.0, 300.0)
+        hazard = BalloonEnemy(speed=0.0)
+        hazard.position.update(360.0, 300.0)
+        session.hazards = [hazard]
+        session.fire_projectile(pygame.Vector2(1.0, 0.0))
+        cues = session.consume_audio_cues()
+        self.assertEqual(cues["sparkler_swing_count"], 1)
+        self.assertGreaterEqual(cues["sparkler_hit_count"], 1)
 
     def test_boss_spawn_sets_audio_cue(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
-        session.elapsed_time = 119.9
+        for _ in range(4):
+            session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.score_seconds = 0.0
         session.update_playing(0.2, pygame.Vector2(0, 0), attack=False)
 
@@ -78,20 +118,17 @@ class GameplayAudioCueValidationTests(unittest.TestCase):
                 size=8,
             )
 
-        # First hit
-        session.projectiles = [_spawn_projectile()]
-        session._check_projectile_collisions()
-        boss.update(0.2, pygame.Vector2(session.player.rect.center))
-        # Second hit
-        session.projectiles = [_spawn_projectile()]
-        session._check_projectile_collisions()
-        boss.update(0.2, pygame.Vector2(session.player.rect.center))
+        total_hits = boss.max_health
+        for _ in range(total_hits - 1):
+            session.projectiles = [_spawn_projectile()]
+            session._check_projectile_collisions()
+            boss.update(0.2, pygame.Vector2(session.player.rect.center))
         # Defeating hit
         session.projectiles = [_spawn_projectile()]
         session._check_projectile_collisions()
 
         cues = session.consume_audio_cues()
-        self.assertEqual(cues["boss_hit_count"], 3)
+        self.assertEqual(cues["boss_hit_count"], total_hits)
         self.assertTrue(cues["boss_defeat"])
         self.assertTrue(cues["milestone_clear"])
         self.assertTrue(cues["confetti_celebration"])

@@ -25,17 +25,15 @@ class CollisionValidationTests(unittest.TestCase):
         session.hazards[0].position.update(100, 100)
         session.hazards[0].velocity.update(0, 0)
 
-        first = session.update_playing(0.016, pygame.Vector2(0, 0))
-        self.assertFalse(first)
-        self.assertEqual(session.player.current_health, 2)
+        hits_taken = 0
+        did_game_over = False
+        while not did_game_over:
+            did_game_over = session.update_playing(0.016, pygame.Vector2(0, 0))
+            hits_taken += 1
+            if did_game_over:
+                break
+            # Expire invulnerability before the next overlap check.
+            session.update_playing(0.8, pygame.Vector2(0, 0))
 
-        # Run forward enough to expire invulnerability and apply 2 more hits.
-        session.update_playing(0.8, pygame.Vector2(0, 0))
-        second = session.update_playing(0.016, pygame.Vector2(0, 0))
-        self.assertFalse(second)
-        self.assertEqual(session.player.current_health, 1)
-
-        session.update_playing(0.8, pygame.Vector2(0, 0))
-        third = session.update_playing(0.016, pygame.Vector2(0, 0))
-        self.assertTrue(third)
+        self.assertEqual(hits_taken, session.player.max_health)
         self.assertEqual(session.player.current_health, 0)

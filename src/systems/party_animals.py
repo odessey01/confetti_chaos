@@ -45,7 +45,7 @@ _PARTY_ANIMAL_REGISTRY: dict[str, PartyAnimalVisualConfig] = {}
 
 
 def _config_from_teddy_variant(variant: TeddyShapeVariant) -> PartyAnimalVisualConfig:
-    display_name = variant.animal_type.title()
+    display_name = "Barry" if variant.variant_id == "teddy_f" else variant.animal_type.title()
     return PartyAnimalVisualConfig(
         variant_id=variant.variant_id,
         display_name=display_name,

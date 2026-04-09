@@ -20,16 +20,30 @@ class PlayerRenderer:
         surface: pygame.Surface,
         player: Player,
         *,
+        animation_frame: pygame.Surface | None = None,
+        animation_rect: pygame.Rect | None = None,
+        animation_flip_x: bool = False,
         show_shadow: bool = True,
         show_outline: bool = True,
     ) -> str:
         if getattr(player, "is_invulnerable", False):
             if (pygame.time.get_ticks() // 70) % 2 == 0:
+                self._draw_direction_indicator(surface, player)
                 return "shape"
+        if animation_frame is not None and animation_rect is not None:
+            self._draw_animation_frame(
+                surface,
+                animation_frame,
+                animation_rect,
+                flip_x=animation_flip_x,
+            )
+            self._draw_direction_indicator(surface, player)
+            return "animated"
         variant = self._variant_for_player(player)
         sprite = self._sprite_for_variant(variant.sprite_asset_path) if variant.prefers_sprite else None
         if sprite is not None:
             self._draw_sprite(surface, player, sprite)
+            self._draw_direction_indicator(surface, player)
             return "sprite"
         draw_party_animal_shape(
             surface,
@@ -38,6 +52,7 @@ class PlayerRenderer:
             show_outline=show_outline,
             show_shadow=show_shadow,
         )
+        self._draw_direction_indicator(surface, player)
         return "shape"
 
     def _variant_for_player(self, player: Player):
@@ -49,6 +64,18 @@ class PlayerRenderer:
         scaled = pygame.transform.smoothscale(sprite, (target_size, target_size))
         draw_rect = scaled.get_rect(center=player.rect.center)
         surface.blit(scaled, draw_rect)
+
+    def _draw_animation_frame(
+        self,
+        surface: pygame.Surface,
+        frame: pygame.Surface,
+        target_rect: pygame.Rect,
+        *,
+        flip_x: bool,
+    ) -> None:
+        source = pygame.transform.flip(frame, True, False) if flip_x else frame
+        scaled = pygame.transform.smoothscale(source, target_rect.size)
+        surface.blit(scaled, target_rect)
 
     def _sprite_for_variant(self, sprite_asset_path: str | None) -> pygame.Surface | None:
         if not sprite_asset_path:
@@ -63,3 +90,33 @@ class PlayerRenderer:
         except (pygame.error, FileNotFoundError, OSError):
             self._sprite_cache[cache_key] = None
             return None
+
+    def _draw_direction_indicator(self, surface: pygame.Surface, player: Player) -> None:
+        facing = pygame.Vector2(getattr(player, "facing", pygame.Vector2(1, 0)))
+        if facing.length_squared() <= 0.0:
+            facing = pygame.Vector2(1, 0)
+        else:
+            facing = facing.normalize()
+
+        center = pygame.Vector2(player.rect.center)
+        length = max(18.0, float(player.size) * 0.42)
+        tip = center + (facing * length)
+        base = center + (facing * max(8.0, length * 0.25))
+        side = pygame.Vector2(-facing.y, facing.x)
+        wing = max(4.0, float(player.size) * 0.08)
+        left = base + (side * wing)
+        right = base - (side * wing)
+
+        # High-contrast marker: dark outline under bright fill for readability.
+        pygame.draw.line(surface, (20, 24, 30), center, tip, width=4)
+        pygame.draw.polygon(
+            surface,
+            (20, 24, 30),
+            [(int(tip.x), int(tip.y)), (int(left.x), int(left.y)), (int(right.x), int(right.y))],
+        )
+        pygame.draw.line(surface, (255, 246, 110), center, tip, width=2)
+        pygame.draw.polygon(
+            surface,
+            (255, 246, 110),
+            [(int(tip.x), int(tip.y)), (int(left.x), int(left.y)), (int(right.x), int(right.y))],
+        )

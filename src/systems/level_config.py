@@ -14,7 +14,7 @@ LEVEL_1_MAX_ENEMIES = 3
 
 # Peak configuration constants (Level 10+)
 MAX_SPAWN_RATE = 2.0
-MAX_ENEMY_SPEED = 300.0
+MAX_ENEMY_SPEED = 265.0
 MAX_ENEMIES = 12
 
 
@@ -61,10 +61,10 @@ def get_level_config(level: int) -> LevelConfig:
     modifiers = get_flavor_modifiers(flavor)
     hazard_mix = get_hazard_mix(flavor)
 
-    # Progress scaling: 0.0 at level 1, 1.0 at level 10+
-    # Use power curve for smoother early progression
+    # Progress scaling: 0.0 at level 1, 1.0 at level 10+.
+    # Use an easing curve that ramps enemy speed more gradually early on.
     linear_progress = min((level - 1) / 9.0, 1.0)
-    progress = linear_progress ** 0.5
+    progress = linear_progress ** 1.15
 
     # Linear interpolation for base parameters
     base_spawn_rate = LEVEL_1_SPAWN_RATE + (MAX_SPAWN_RATE - LEVEL_1_SPAWN_RATE) * progress

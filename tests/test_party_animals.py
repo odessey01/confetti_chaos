@@ -29,7 +29,7 @@ class PartyAnimalVisualTests(unittest.TestCase):
         self.assertIn(DEFAULT_PARTY_ANIMAL_ID, PARTY_ANIMAL_CONFIGS_BY_ID)
         cfg = get_party_animal(DEFAULT_PARTY_ANIMAL_ID)
         self.assertEqual(cfg.variant_id, DEFAULT_PARTY_ANIMAL_ID)
-        self.assertEqual(cfg.display_name, "Teddy")
+        self.assertEqual(cfg.display_name, "Barry")
 
     def test_shared_accessory_rules_are_party_hat_based(self) -> None:
         self.assertEqual(SHARED_PARTY_ACCESSORY_RULES["type"], "party_hat")
