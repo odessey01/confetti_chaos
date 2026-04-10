@@ -126,6 +126,24 @@ class UiRenderer:
         detail = self._body_font.render(f"{charge}/{max_charge}", True, self._prompt_color)
         surface.blit(detail, (bar_x, bar_y + 18))
 
+    def draw_weapon_evolution_state(
+        self,
+        surface: pygame.Surface,
+        *,
+        weapon_name: str,
+        evolved_form_id: str | None,
+    ) -> None:
+        weapon_label = self._body_font.render(f"Weapon: {weapon_name}", True, (236, 242, 252))
+        weapon_rect = weapon_label.get_rect(topright=(surface.get_width() - 20, 22))
+        surface.blit(weapon_label, weapon_rect)
+        if not evolved_form_id:
+            form_label = self._body_font.render("Form: Base", True, (170, 186, 206))
+        else:
+            pretty_form = str(evolved_form_id).replace("_", " ").title()
+            form_label = self._body_font.render(f"Form: {pretty_form}", True, (255, 226, 138))
+        form_rect = form_label.get_rect(topright=(surface.get_width() - 20, 50))
+        surface.blit(form_label, form_rect)
+
     def draw_boss_victory(self, surface: pygame.Surface, bonus: int) -> None:
         title_surface = self._title_font.render("BOSS DEFEATED!", True, (255, 215, 120))
         title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 40))
@@ -144,6 +162,16 @@ class UiRenderer:
         
         text_rect = text_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2))
         surface.blit(text_surface, text_rect)
+
+    def draw_unlock_notification(self, surface: pygame.Surface, text: str, *, alpha: float = 1.0) -> None:
+        banner = pygame.Surface((min(760, surface.get_width() - 80), 62), pygame.SRCALPHA)
+        banner.fill((24, 44, 36, int(180 * max(0.0, min(alpha, 1.0)))))
+        banner_rect = banner.get_rect(center=(surface.get_width() // 2, 48))
+        surface.blit(banner, banner_rect)
+        label = self._body_font.render(text, True, (214, 255, 210))
+        label.set_alpha(max(0, min(255, int(255 * alpha))))
+        label_rect = label.get_rect(center=banner_rect.center)
+        surface.blit(label, label_rect)
 
     def draw_menu(
         self,
@@ -205,6 +233,8 @@ class UiRenderer:
         passive_drawback: str,
         passive_summary: str | None = None,
         selected_weapon_name: str | None = None,
+        selected_locked: bool = False,
+        selected_unlock_hint: str = "",
     ) -> None:
         center_x = surface.get_width() // 2
         center_y = surface.get_height() // 2
@@ -231,11 +261,17 @@ class UiRenderer:
             item_rect = item.get_rect(center=(center_x, center_y + 186 + (idx * 36)))
             surface.blit(item, item_rect)
 
-        selected_label = self._prompt_font.render(f"Selected: {selected_name}", True, (245, 248, 250))
+        selected_color = (186, 192, 202) if selected_locked else (245, 248, 250)
+        selected_label = self._prompt_font.render(f"Selected: {selected_name}", True, selected_color)
         selected_label_rect = selected_label.get_rect(center=(center_x, center_y + 26))
         surface.blit(selected_label, selected_label_rect)
 
         text_y = center_y + 58
+        if selected_locked and selected_unlock_hint:
+            lock_surface = self._body_font.render(f"Unlock: {selected_unlock_hint}", True, (255, 206, 164))
+            lock_rect = lock_surface.get_rect(center=(center_x, text_y))
+            surface.blit(lock_surface, lock_rect)
+            text_y += 32
         if selected_note:
             note_surface = self._body_font.render(selected_note, True, self._prompt_color)
             note_rect = note_surface.get_rect(center=(center_x, text_y))
@@ -333,19 +369,29 @@ class UiRenderer:
         for idx, option in enumerate(options):
             x = start_x + (idx * (card_w + 20))
             selected = idx == selected_index
+            option_data = option if isinstance(option, dict) else {}
+            leads_to_evolution = bool(option_data.get("leads_to_evolution", False))
             card_color = (52, 74, 96, 230) if selected else (33, 52, 70, 210)
+            if leads_to_evolution:
+                card_color = (68, 86, 62, 232) if selected else (46, 64, 48, 216)
             border_color = (255, 228, 138) if selected else (160, 190, 214)
+            if leads_to_evolution:
+                border_color = (186, 255, 166) if selected else (132, 208, 154)
             card = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
             card.fill(card_color)
             surface.blit(card, (x, y))
             pygame.draw.rect(surface, border_color, (x, y, card_w, card_h), width=2, border_radius=8)
 
-            name = getattr(option, "name", str(option))
-            desc = getattr(option, "description", "")
+            name = str(option_data.get("name", getattr(option, "name", str(option))))
+            desc = str(option_data.get("description", getattr(option, "description", "")))
             name_surface = self._prompt_font.render(name, True, (245, 248, 250))
             surface.blit(name_surface, (x + 14, y + 16))
             desc_surface = self._body_font.render(desc, True, (216, 229, 242))
             surface.blit(desc_surface, (x + 14, y + 82))
+            if leads_to_evolution:
+                evo_badge = self._body_font.render("EVOLUTION", True, (214, 255, 198))
+                evo_rect = evo_badge.get_rect(topright=(x + card_w - 12, y + 16))
+                surface.blit(evo_badge, evo_rect)
 
         hint = self._body_font.render("Arrows/Stick to choose, Enter/A to confirm", True, self._prompt_color)
         surface.blit(hint, hint.get_rect(center=(center_x, y + card_h + 40)))

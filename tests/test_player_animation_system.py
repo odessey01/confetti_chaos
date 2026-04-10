@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
+import tempfile
 import unittest
 
 import pygame
@@ -23,6 +25,7 @@ from systems.player_animation import (  # noqa: E402
     LoadedAnimationClip,
     LoadedCharacterAnimation,
     PlayerAnimationSystem,
+    _load_frame_rect_cache,
     get_character_animation_config,
     list_character_animation_configs,
     load_character_animation,
@@ -128,6 +131,83 @@ class PlayerAnimationSystemValidationTests(unittest.TestCase):
         self.assertTrue(loaded.idle.available)
         self.assertTrue(loaded.walk.available)
         self.assertNotEqual(len(loaded.idle.frames), len(loaded.walk.frames))
+
+    def test_main_game_bear_cache_paths_load_frame_rects(self) -> None:
+        walk_clip = CHARACTER_ANIMATION_CONFIGS["teddy_f"].walk
+        assert walk_clip.frame_rects_path is not None
+        loaded_cache = _load_frame_rect_cache(
+            walk_clip.frame_rects_path,
+            expected_sheet_path=walk_clip.sheet_path,
+        )
+        assert loaded_cache is not None
+        rects, inset = loaded_cache
+        self.assertGreater(len(rects), 0)
+        self.assertGreaterEqual(inset, 0)
+
+    def test_load_character_animation_uses_frame_rect_cache_when_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = pathlib.Path(tmpdir) / "cache.json"
+            payload = {
+                "version": 1,
+                "sheet_path": "images/player/bear/bbox_bear_idle.png",
+                "content_inset": 0,
+                "frame_rects": [{"x": 0, "y": 0, "w": 12, "h": 16}],
+            }
+            cache_path.write_text(json.dumps(payload), encoding="utf-8")
+            config = CharacterAnimationConfig(
+                character_id="cached_test",
+                idle=AnimationClipConfig(
+                    sheet_path="images/player/bear/bbox_bear_idle.png",
+                    rows=1,
+                    columns=1,
+                    fps=5.0,
+                    extraction_mode="bbox_guide",
+                    bbox_guide_path="images/player/bear/does_not_exist.png",
+                    frame_rects_path=str(cache_path),
+                ),
+                walk=AnimationClipConfig(
+                    sheet_path="images/player/bear/bbox_bear_idle.png",
+                    rows=1,
+                    columns=1,
+                    fps=5.0,
+                    extraction_mode="bbox_guide",
+                    bbox_guide_path="images/player/bear/does_not_exist.png",
+                    frame_rects_path=str(cache_path),
+                ),
+            )
+            loaded = load_character_animation(config)
+            self.assertTrue(loaded.idle.available)
+            self.assertEqual(len(loaded.idle.frames), 1)
+            self.assertEqual(loaded.idle.frames[0].get_size(), (12, 16))
+
+    def test_invalid_frame_rect_cache_falls_back_to_bbox_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = pathlib.Path(tmpdir) / "bad_cache.json"
+            cache_path.write_text("{invalid-json", encoding="utf-8")
+            config = CharacterAnimationConfig(
+                character_id="cache_fallback",
+                idle=AnimationClipConfig(
+                    sheet_path="images/player/bear/bbox_bear_walking.png",
+                    rows=5,
+                    columns=4,
+                    fps=8.0,
+                    extraction_mode="bbox_guide",
+                    bbox_guide_path="images/player/bear/bbox_bear_walking.png",
+                    frame_rects_path=str(cache_path),
+                ),
+                walk=AnimationClipConfig(
+                    sheet_path="images/player/bear/bbox_bear_walking.png",
+                    rows=5,
+                    columns=4,
+                    fps=8.0,
+                    extraction_mode="bbox_guide",
+                    bbox_guide_path="images/player/bear/bbox_bear_walking.png",
+                    frame_rects_path=str(cache_path),
+                ),
+            )
+            loaded = load_character_animation(config)
+            self.assertTrue(loaded.idle.available)
+            self.assertGreater(len(loaded.idle.frames), 1)
 
     def test_main_game_bear_bbox_frames_do_not_include_red_guides(self) -> None:
         config = CHARACTER_ANIMATION_CONFIGS["teddy_f"]
