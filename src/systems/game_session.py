@@ -35,6 +35,7 @@ from .weapons import (
     WeaponDefinition,
     get_weapon_definition,
 )
+from .weapon_evolutions import WeaponEvolutionTracker, preview_weapon_evolutions_with_added_tags
 
 
 class GameSession:
@@ -59,9 +60,18 @@ class GameSession:
     BOTTLE_ROCKET_DOWNWARD_ARC_PER_SECOND = 0.48
     BOTTLE_ROCKET_EXPLOSION_DAMAGE_MODE = "direct_hit_only"
     BOTTLE_ROCKET_EXPLOSION_RADIUS = 0.0
+    BURST_ROCKET_FRAGMENT_COUNT = 2
+    BURST_ROCKET_FRAGMENT_SPREAD_DEGREES = 20.0
+    BURST_ROCKET_FRAGMENT_LIFETIME = 0.55
+    BURST_ROCKET_FRAGMENT_MAX_TRAVEL_DISTANCE = 260.0
+    BURST_ROCKET_FRAGMENT_SPEED_MULT = 0.85
+    BIG_POP_ROCKET_RADIUS = 84.0
     SPARKLER_SWEEP_CONE_DEGREES = 82.0
     SPARKLER_ARC_INNER_RADIUS_RATIO = 0.24
     SPARKLER_SWEEP_DURATION = 0.08
+    SPARK_AURA_RADIUS = 120.0
+    SPARK_AURA_TICK_INTERVAL = 0.32
+    SPARK_AURA_DAMAGE = 1
     MAX_ACTIVE_ENEMY_SPRAYS = 48
     SPRAYER_PROJECTILE_LIFETIME = 0.58
     SPRAYER_PROJECTILE_SIZE = 9
@@ -130,6 +140,7 @@ class GameSession:
         self._aim_assist_debug: dict[str, object] = {}
         self._sparkler_attack_debug: dict[str, object] = {}
         self._sparkler_swing_count = 0
+        self._spark_aura_tick_timer = 0.0
         self._last_attack_direction = pygame.Vector2(1.0, 0.0)
         self.active_weapon_id = DEFAULT_WEAPON_ID
         self._active_weapon_definition: WeaponDefinition = get_weapon_definition(DEFAULT_WEAPON_ID)
@@ -151,6 +162,8 @@ class GameSession:
         self._character_pickup_radius_bonus = 0.0
         self._character_xp_magnet_mult = 0.0
         self._current_upgrade_choices: list[UpgradeDefinition] = []
+        self._weapon_evolution_tracker = WeaponEvolutionTracker()
+        self._weapon_evolution_forms: dict[str, str] = {}
         self.max_active_projectiles = 3
         self._weapon_cooldown_timer = 0.0
         self._bonus_score_points = 0.0
@@ -176,6 +189,10 @@ class GameSession:
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
+        self._pending_evolution_sfx_count = 0
+        self._evolution_feedback_timer = 0.0
+        self._evolution_feedback_label = ""
+        self._evolution_pause_timer = 0.0
         self._dodge_trail_timer = 0.0
         self._cat_frenzy_timer = 0.0
         self._debug_font: pygame.font.Font | None = None
@@ -229,6 +246,8 @@ class GameSession:
         self.run_progression.reset()
         self.run_upgrades.reset()
         self._current_upgrade_choices = []
+        self._weapon_evolution_tracker.reset()
+        self._weapon_evolution_forms = {}
         self.max_active_projectiles = 3
         self._weapon_cooldown_timer = 0.0
         self._bonus_score_points = 0.0
@@ -263,10 +282,15 @@ class GameSession:
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
+        self._pending_evolution_sfx_count = 0
+        self._evolution_feedback_timer = 0.0
+        self._evolution_feedback_label = ""
+        self._evolution_pause_timer = 0.0
         self._dodge_trail_timer = 0.0
         self._cat_frenzy_timer = 0.0
         self._sparkler_attack_debug = {}
         self._sparkler_swing_count = 0
+        self._spark_aura_tick_timer = 0.0
         self._last_attack_direction = pygame.Vector2(1.0, 0.0)
         # Configure initial hazard mix for level 1
         level_config = self.current_level_config
@@ -283,6 +307,13 @@ class GameSession:
             self.confetti.update(delta_seconds)
             if self._boss_defeat_timer <= 0.0:
                 self._complete_boss_celebration()
+            return False
+        self._evolution_feedback_timer = max(0.0, self._evolution_feedback_timer - max(0.0, delta_seconds))
+        if self._evolution_feedback_timer <= 0.0:
+            self._evolution_feedback_label = ""
+        if self._evolution_pause_timer > 0.0:
+            self._evolution_pause_timer = max(0.0, self._evolution_pause_timer - max(0.0, delta_seconds))
+            self.confetti.update(delta_seconds)
             return False
 
         self.elapsed_time += delta_seconds
@@ -313,6 +344,7 @@ class GameSession:
         if self.player.is_dodging and self._dodge_trail_timer <= 0.0:
             self.confetti.spawn_burst(player_center, count=2, speed_min=80.0, speed_max=150.0, lifetime_min=0.2, lifetime_max=0.35)
             self._dodge_trail_timer = 0.04
+        self._update_spark_aura(delta_seconds)
         
         # Handle attack input
         if attack:
@@ -323,11 +355,14 @@ class GameSession:
         for projectile in self.projectiles:
             projectile.update(delta_seconds)
             if projectile.is_expired() or projectile.is_out_of_bounds(self.bounds):
+                evolved_impact_scale = self._bottle_rocket_impact_scale(projectile)
                 self._spawn_bottle_rocket_impact_feedback(
                     pygame.Vector2(projectile.position),
-                    impact_scale=0.85,
+                    impact_scale=0.85 * evolved_impact_scale,
                     end_of_range=True,
                 )
+                self._maybe_spawn_burst_rocket_fragments(projectile, pygame.Vector2(projectile.position))
+                self._maybe_apply_big_pop_aoe(projectile, pygame.Vector2(projectile.position))
                 self._pending_bottle_rocket_impact_sfx_count += 1
                 continue
             active_projectiles.append(projectile)
@@ -556,12 +591,19 @@ class GameSession:
         resolved_direction = self._resolve_fire_direction(player_center, pygame.Vector2(direction))
         self._last_attack_direction = pygame.Vector2(resolved_direction)
         effects = self.run_upgrades.effects_snapshot()
+        evolution_form_id = self._active_weapon_form_id("bottle_rocket")
         rocket_speed = self.BASE_PROJECTILE_SPEED * (1.0 + effects.get("projectile_speed_mult", 0.0))
+        if evolution_form_id == "burst_rocket":
+            rocket_speed *= 1.06
+        elif evolution_form_id == "big_pop_rocket":
+            rocket_speed *= 1.03
         rocket_damage = (
             1
             + int(effects.get("projectile_damage", 0.0))
             + self._character_outgoing_damage_bonus
         )
+        if evolution_form_id in ("burst_rocket", "big_pop_rocket"):
+            rocket_damage += 1
         if self._cat_frenzy_timer > 0.0:
             rocket_damage += self.CAT_FRENZY_DAMAGE_BONUS
         rocket_damage = max(1, int(rocket_damage))
@@ -579,6 +621,8 @@ class GameSession:
             damage=rocket_damage,
             flight_profile=self._current_bottle_rocket_flight_profile(),
         )
+        if evolution_form_id is not None:
+            setattr(rocket, "evolution_form_id", evolution_form_id)
         self.projectiles.append(rocket)
         self._spawn_bottle_rocket_launch_feedback(player_center, resolved_direction)
         self._pending_bottle_rocket_launch_sfx_count += 1
@@ -599,6 +643,9 @@ class GameSession:
         attack_range_bonus = max(0.0, effects.get("sparkler_range_bonus", 0.0))
         cone_bonus = max(0.0, effects.get("sparkler_cone_bonus_degrees", 0.0))
         damage_bonus = max(0, int(effects.get("sparkler_damage_bonus", 0.0)))
+        evolution_form_id = self._active_weapon_form_id("sparkler")
+        if evolution_form_id == "spark_aura":
+            return
         attack_range = max(
             24.0,
             float(weapon.effective_range) + float(profile.range_bonus) + float(attack_range_bonus),
@@ -608,6 +655,14 @@ class GameSession:
             self.SPARKLER_SWEEP_CONE_DEGREES + float(profile.cone_bonus_degrees) + float(cone_bonus),
         )
         attack_damage = max(1, int(weapon.base_damage) + int(profile.damage_bonus) + int(damage_bonus))
+        if evolution_form_id == "wide_arc_sparkler":
+            attack_range += 16.0
+            cone_degrees += 14.0
+            attack_damage += 1
+        elif evolution_form_id == "spark_aura":
+            attack_range += 10.0
+            cone_degrees += 10.0
+            attack_damage += 1
         center = pygame.Vector2(self.player.rect.center) + (facing * 34.0)
         swing = self._sparkler_attack_shape(
             origin=pygame.Vector2(self.player.rect.center),
@@ -829,6 +884,103 @@ class GameSession:
             self.add_super_charge(super_charge_gained)
         if sparkler_hit_contacts > 0:
             self._pending_sparkler_hit_sfx_count += sparkler_hit_contacts
+
+    def _update_spark_aura(self, delta_seconds: float) -> None:
+        if self.active_weapon_id != "sparkler":
+            self._spark_aura_tick_timer = 0.0
+            return
+        if self._active_weapon_form_id("sparkler") != "spark_aura":
+            self._spark_aura_tick_timer = 0.0
+            return
+        self._spark_aura_tick_timer += max(0.0, float(delta_seconds))
+        while self._spark_aura_tick_timer >= self.SPARK_AURA_TICK_INTERVAL:
+            self._spark_aura_tick_timer -= self.SPARK_AURA_TICK_INTERVAL
+            self._apply_spark_aura_tick()
+
+    def _apply_spark_aura_tick(self) -> None:
+        center = pygame.Vector2(self.player.rect.center)
+        hazards_to_remove: list[int] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+        super_charge_gained = 0
+        contacts = 0
+        for hazard_idx, hazard in enumerate(self.hazards):
+            hazard_center = pygame.Vector2(hazard.rect.center)
+            if center.distance_to(hazard_center) > self.SPARK_AURA_RADIUS:
+                continue
+            contacts += 1
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=self.SPARK_AURA_DAMAGE,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                    super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(hazard_center)
+                    hazard_kill_kinds.append("boss_balloon")
+                    self._bonus_score_points += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
+                        self.run_upgrades.effects_snapshot()
+                    )
+                    self._boss_active = False
+                    self._boss_defeated = True
+                    self._boss_defeated_level = self.current_level
+                    self._boss_celebration_active = True
+                    self._boss_defeat_timer = self.BOSS_CELEBRATION_TIME
+                    self._boss_victory_sound_pending = True
+                    self._pending_boss_defeat_sfx = True
+                    self._pending_milestone_clear_sfx = True
+                    self._pending_confetti_celebration_sfx = True
+                    self._spawn_enhanced_confetti(hazard_center)
+                continue
+
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=self.SPARK_AURA_DAMAGE,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(hazard_center)
+                    hazard_kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                continue
+
+            self._pending_balloon_hit_sfx_count += 1
+            if hazard_idx not in hazards_to_remove:
+                hazards_to_remove.append(hazard_idx)
+                hazard_kill_positions.append(hazard_center)
+                hazard_kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+                hazard_kill_kinds.append(hazard_kind)
+                self._pending_balloon_pop_sfx_count += 1
+
+        for idx in sorted(hazards_to_remove, reverse=True):
+            self.hazards.pop(idx)
+
+        if hazard_kill_kinds:
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+            super_charge_gained += sum(self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds)
+            for kill_pos in hazard_kill_positions:
+                self.confetti.spawn_burst(
+                    kill_pos,
+                    count=6 + self._confetti_bonus_count(),
+                    speed_min=120.0,
+                    speed_max=220.0,
+                    lifetime_min=0.18,
+                    lifetime_max=0.3,
+                )
+        if super_charge_gained > 0:
+            self.add_super_charge(super_charge_gained)
+        if contacts > 0:
+            self._pending_sparkler_hit_sfx_count += contacts
 
     def _target_in_attack_arc(
         self,
@@ -1114,11 +1266,35 @@ class GameSession:
     def current_upgrade_choices(self) -> list[UpgradeDefinition]:
         return list(self._current_upgrade_choices)
 
+    def current_upgrade_choice_previews(self) -> list[dict[str, object]]:
+        acquired_tags = self.run_upgrades.acquired_tags()
+        triggered_ids = self._weapon_evolution_tracker.triggered_ids()
+        previews: list[dict[str, object]] = []
+        for option in self._current_upgrade_choices:
+            preview_evolutions = preview_weapon_evolutions_with_added_tags(
+                weapon_id=self.active_weapon_id,
+                acquired_tags=acquired_tags,
+                added_tags=option.tags,
+                exclude_evolution_ids=triggered_ids,
+            )
+            evolution_ids = tuple(item.evolution_id for item in preview_evolutions)
+            previews.append(
+                {
+                    "id": option.id,
+                    "name": option.name,
+                    "description": option.description,
+                    "leads_to_evolution": bool(preview_evolutions),
+                    "evolution_ids": evolution_ids,
+                }
+            )
+        return previews
+
     def ensure_upgrade_choices(self) -> list[UpgradeDefinition]:
         if not self._current_upgrade_choices:
             self._current_upgrade_choices = self.run_upgrades.generate_choices(
                 count=3,
                 active_weapon_id=self.active_weapon_id,
+                evolution_exclude_ids=self._weapon_evolution_tracker.triggered_ids(),
             )
             if not self._current_upgrade_choices and self.run_progression.pending_level_ups > 0:
                 self.run_progression.consume_pending_level_up()
@@ -1132,9 +1308,142 @@ class GameSession:
         chosen = self._current_upgrade_choices[index]
         if not self.run_upgrades.apply_choice(chosen.id, active_weapon_id=self.active_weapon_id):
             return False
+        new_evolutions = self._weapon_evolution_tracker.check_for_new(
+            weapon_id=self.active_weapon_id,
+            acquired_tags=self.run_upgrades.acquired_tags(),
+        )
+        activated_labels: list[str] = []
+        for evolution in new_evolutions:
+            if evolution.weapon_id not in self._weapon_evolution_forms:
+                self._weapon_evolution_forms[evolution.weapon_id] = evolution.result_form_id
+                activated_labels.append(evolution.result_form_id.replace("_", " ").title())
+        if activated_labels:
+            self._trigger_evolution_feedback(activated_labels[0])
         self.run_progression.consume_pending_level_up()
         self._current_upgrade_choices = []
         return True
+
+    def weapon_evolution_snapshot(self) -> dict[str, object]:
+        return {
+            "triggered_evolution_ids": self._weapon_evolution_tracker.triggered_ids(),
+            "active_forms_by_weapon": dict(self._weapon_evolution_forms),
+        }
+
+    def _active_weapon_form_id(self, weapon_id: str) -> str | None:
+        return self._weapon_evolution_forms.get(str(weapon_id))
+
+    def _bottle_rocket_impact_scale(self, projectile: BottleRocket) -> float:
+        evolution_form_id = str(getattr(projectile, "evolution_form_id", "") or "")
+        if evolution_form_id == "big_pop_rocket":
+            return 1.35
+        if evolution_form_id == "burst_rocket":
+            return 1.15
+        return 1.0
+
+    def _trigger_evolution_feedback(self, label: str) -> None:
+        self._pending_evolution_sfx_count += 1
+        self._evolution_feedback_timer = 1.15
+        self._evolution_feedback_label = str(label)
+        self._evolution_pause_timer = max(self._evolution_pause_timer, 0.12)
+        center = pygame.Vector2(self.player.rect.center)
+        self.confetti.spawn_burst(
+            center,
+            count=22 + self._confetti_bonus_count(),
+            speed_min=210.0,
+            speed_max=360.0,
+            lifetime_min=0.28,
+            lifetime_max=0.46,
+        )
+        self._spawn_pulse_centers.append((int(center.x), int(center.y)))
+
+    def _maybe_spawn_burst_rocket_fragments(
+        self,
+        projectile: BottleRocket,
+        center: pygame.Vector2,
+    ) -> None:
+        evolution_form_id = str(getattr(projectile, "evolution_form_id", "") or "")
+        if evolution_form_id != "burst_rocket":
+            return
+        if bool(getattr(projectile, "is_burst_fragment", False)):
+            return
+        base_direction = pygame.Vector2(projectile.direction)
+        if base_direction.length_squared() <= 0.0:
+            base_direction = pygame.Vector2(1.0, 0.0)
+        else:
+            base_direction = base_direction.normalize()
+
+        fragment_count = max(2, int(self.BURST_ROCKET_FRAGMENT_COUNT))
+        half_spread = max(6.0, float(self.BURST_ROCKET_FRAGMENT_SPREAD_DEGREES) * 0.5)
+        if fragment_count <= 1:
+            angles = (0.0,)
+        else:
+            step = (half_spread * 2.0) / max(1, fragment_count - 1)
+            angles = tuple((-half_spread + (step * index)) for index in range(fragment_count))
+
+        base_damage = max(1, int(getattr(projectile, "damage", 1)) - 1)
+        base_speed = max(180.0, float(projectile.speed) * self.BURST_ROCKET_FRAGMENT_SPEED_MULT)
+        for angle in angles:
+            fragment = BottleRocket(
+                position=pygame.Vector2(center),
+                direction=base_direction.rotate(angle),
+                speed=base_speed,
+                lifetime=self.BURST_ROCKET_FRAGMENT_LIFETIME,
+                max_travel_distance=self.BURST_ROCKET_FRAGMENT_MAX_TRAVEL_DISTANCE,
+                size=6,
+                damage=base_damage,
+                flight_profile=self._current_bottle_rocket_flight_profile(),
+            )
+            setattr(fragment, "is_burst_fragment", True)
+            self.projectiles.append(fragment)
+
+    def _maybe_apply_big_pop_aoe(self, projectile: BottleRocket, center: pygame.Vector2) -> None:
+        evolution_form_id = str(getattr(projectile, "evolution_form_id", "") or "")
+        if evolution_form_id != "big_pop_rocket":
+            return
+        center_vec = pygame.Vector2(center)
+        hazards_to_remove: list[int] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+        for hazard_idx, hazard in enumerate(self.hazards):
+            if isinstance(hazard, (BossBalloon, PinataEnemy)):
+                continue
+            hazard_center = pygame.Vector2(hazard.rect.center)
+            if center_vec.distance_to(hazard_center) > self.BIG_POP_ROCKET_RADIUS:
+                continue
+            hazards_to_remove.append(hazard_idx)
+            hazard_kill_positions.append(hazard_center)
+            hazard_kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+            hazard_kill_kinds.append(hazard_kind)
+            self._pending_balloon_pop_sfx_count += 1
+            if isinstance(hazard, ConfettiSprayer):
+                self._pending_sprayer_destroy_sfx_count += 1
+                self._spawn_sprayer_destroy_confetti(hazard_center)
+            elif isinstance(hazard, StreamerSnake):
+                self._spawn_streamer_snake_break_confetti(hazard_center)
+
+        if not hazards_to_remove:
+            return
+
+        self._pending_balloon_hit_sfx_count += len(hazards_to_remove)
+        for idx in sorted(set(hazards_to_remove), reverse=True):
+            self.hazards.pop(idx)
+
+        self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+        self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+            self.run_upgrades.effects_snapshot()
+        )
+        self.add_super_charge(
+            sum(self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds)
+        )
+        for kill_pos in hazard_kill_positions:
+            self.confetti.spawn_burst(
+                kill_pos,
+                count=8 + self._confetti_bonus_count(),
+                speed_min=160.0,
+                speed_max=290.0,
+                lifetime_min=0.22,
+                lifetime_max=0.38,
+            )
 
     def _check_projectile_collisions(self) -> int:
         """Check projectile-hazard collisions and remove entities on hit.
@@ -1142,7 +1451,8 @@ class GameSession:
         Returns:
             Number of hazards killed in this frame.
         """
-        hazards_to_remove = []
+        hazards_to_remove_ids: set[int] = set()
+        hazards_to_remove: list[object] = []
         projectiles_to_remove = []
         hazard_kill_positions = []
         hazard_kill_kinds: list[str] = []
@@ -1154,11 +1464,14 @@ class GameSession:
                 if projectile.rect.colliderect(hazard.rect):
                     if proj_idx not in projectiles_to_remove:
                         projectiles_to_remove.append(proj_idx)
+                        evolved_impact_scale = self._bottle_rocket_impact_scale(projectile)
                         self._spawn_bottle_rocket_impact_feedback(
                             pygame.Vector2(projectile.position),
-                            impact_scale=1.0,
+                            impact_scale=1.0 * evolved_impact_scale,
                             end_of_range=False,
                         )
+                        self._maybe_spawn_burst_rocket_fragments(projectile, pygame.Vector2(projectile.position))
+                        self._maybe_apply_big_pop_aoe(projectile, pygame.Vector2(projectile.position))
                         self._pending_bottle_rocket_impact_sfx_count += 1
                     
                     # Handle boss health
@@ -1173,23 +1486,26 @@ class GameSession:
                             super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
                         if defeated:
                             # Boss defeated - award bonus and enhanced feedback
-                            hazards_to_remove.append(hazard_idx)
-                            hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
-                            self._bonus_score_points += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
-                                self.run_upgrades.effects_snapshot()
-                            )
-                            hazard_kill_kinds.append("boss_balloon")
-                            self._boss_active = False
-                            self._boss_defeated = True
-                            self._boss_defeated_level = self.current_level
-                            self._boss_celebration_active = True
-                            self._boss_defeat_timer = self.BOSS_CELEBRATION_TIME
-                            self._boss_victory_sound_pending = True
-                            self._pending_boss_defeat_sfx = True
-                            self._pending_milestone_clear_sfx = True
-                            self._pending_confetti_celebration_sfx = True
-                            # Enhanced confetti burst for boss defeat
-                            self._spawn_enhanced_confetti(pygame.Vector2(hazard.rect.center))
+                            hazard_id = id(hazard)
+                            if hazard_id not in hazards_to_remove_ids:
+                                hazards_to_remove_ids.add(hazard_id)
+                                hazards_to_remove.append(hazard)
+                                hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                                self._bonus_score_points += self.BOSS_BONUS_POINTS * self._score_multiplier_from_effects(
+                                    self.run_upgrades.effects_snapshot()
+                                )
+                                hazard_kill_kinds.append("boss_balloon")
+                                self._boss_active = False
+                                self._boss_defeated = True
+                                self._boss_defeated_level = self.current_level
+                                self._boss_celebration_active = True
+                                self._boss_defeat_timer = self.BOSS_CELEBRATION_TIME
+                                self._boss_victory_sound_pending = True
+                                self._pending_boss_defeat_sfx = True
+                                self._pending_milestone_clear_sfx = True
+                                self._pending_confetti_celebration_sfx = True
+                                # Enhanced confetti burst for boss defeat
+                                self._spawn_enhanced_confetti(pygame.Vector2(hazard.rect.center))
                     elif isinstance(hazard, PinataEnemy):
                         hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
                             hazard,
@@ -1197,8 +1513,10 @@ class GameSession:
                         )
                         if hit_count > 0:
                             self._pending_balloon_hit_sfx_count += hit_count
-                        if defeated and hazard_idx not in hazards_to_remove:
-                            hazards_to_remove.append(hazard_idx)
+                        hazard_id = id(hazard)
+                        if defeated and hazard_id not in hazards_to_remove_ids:
+                            hazards_to_remove_ids.add(hazard_id)
+                            hazards_to_remove.append(hazard)
                             center = pygame.Vector2(hazard.rect.center)
                             hazard_kill_positions.append(center)
                             hazard_kill_kinds.append("pinata")
@@ -1222,8 +1540,10 @@ class GameSession:
                             )
                     elif isinstance(hazard, ConfettiSprayer):
                         self._pending_balloon_hit_sfx_count += 1
-                        if hazard_idx not in hazards_to_remove:
-                            hazards_to_remove.append(hazard_idx)
+                        hazard_id = id(hazard)
+                        if hazard_id not in hazards_to_remove_ids:
+                            hazards_to_remove_ids.add(hazard_id)
+                            hazards_to_remove.append(hazard)
                             center = pygame.Vector2(hazard.rect.center)
                             hazard_kill_positions.append(center)
                             hazard_kill_kinds.append("confetti_sprayer")
@@ -1232,8 +1552,10 @@ class GameSession:
                             self._spawn_sprayer_destroy_confetti(center)
                     elif isinstance(hazard, StreamerSnake):
                         self._pending_balloon_hit_sfx_count += 1
-                        if hazard_idx not in hazards_to_remove:
-                            hazards_to_remove.append(hazard_idx)
+                        hazard_id = id(hazard)
+                        if hazard_id not in hazards_to_remove_ids:
+                            hazards_to_remove_ids.add(hazard_id)
+                            hazards_to_remove.append(hazard)
                             center = pygame.Vector2(hazard.rect.center)
                             hazard_kill_positions.append(center)
                             hazard_kill_kinds.append("streamer_snake")
@@ -1242,16 +1564,20 @@ class GameSession:
                     else:
                         # Normal hazard - instant kill
                         self._pending_balloon_hit_sfx_count += 1
-                        if hazard_idx not in hazards_to_remove:
-                            hazards_to_remove.append(hazard_idx)
+                        hazard_id = id(hazard)
+                        if hazard_id not in hazards_to_remove_ids:
+                            hazards_to_remove_ids.add(hazard_id)
+                            hazards_to_remove.append(hazard)
                             hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
                             kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
                             hazard_kill_kinds.append(kind)
                             self._pending_balloon_pop_sfx_count += 1
         
-        # Remove in reverse order to maintain indices
-        for idx in sorted(hazards_to_remove, reverse=True):
-            self.hazards.pop(idx)
+        removed_hazard_count = 0
+        for hazard in hazards_to_remove:
+            if hazard in self.hazards:
+                self.hazards.remove(hazard)
+                removed_hazard_count += 1
         
         for idx in sorted(projectiles_to_remove, reverse=True):
             self.projectiles.pop(idx)
@@ -1270,7 +1596,7 @@ class GameSession:
         if super_charge_gained > 0:
             self.add_super_charge(super_charge_gained)
 
-        return len(hazards_to_remove)
+        return removed_hazard_count
 
     def _apply_damage_to_multi_hit_enemy(self, hazard: object, *, projectile_damage: int) -> tuple[int, bool]:
         hits_registered = 0
@@ -1512,6 +1838,7 @@ class GameSession:
             "sparkler_swing_count": self._pending_sparkler_swing_sfx_count,
             "sparkler_hit_count": self._pending_sparkler_hit_sfx_count,
             "xp_pickup_count": self._pending_xp_pickup_sfx_count,
+            "evolution_count": self._pending_evolution_sfx_count,
         }
         self._pending_balloon_hit_sfx_count = 0
         self._pending_balloon_pop_sfx_count = 0
@@ -1532,6 +1859,7 @@ class GameSession:
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
+        self._pending_evolution_sfx_count = 0
         return cues
 
     def consume_spawn_pulse_centers(self) -> list[tuple[int, int]]:
@@ -1594,7 +1922,9 @@ class GameSession:
             animation_rect=animation_rect,
             animation_flip_x=self.player_animation.should_flip_horizontal(),
         )
+        self._draw_spark_aura_visual(surface)
         self._draw_sparkler_attack_visual(surface)
+        self._draw_evolution_feedback_overlay(surface)
         self.confetti.draw(surface)
 
     def player_render_anchor(self) -> tuple[int, int]:
@@ -1651,6 +1981,45 @@ class GameSession:
         )
         anim_text = self._debug_font.render(anim_label, True, (208, 248, 226))
         surface.blit(anim_text, (14, 36))
+
+    def _draw_spark_aura_visual(self, surface: pygame.Surface) -> None:
+        if self.active_weapon_id != "sparkler":
+            return
+        if self._active_weapon_form_id("sparkler") != "spark_aura":
+            return
+        center = pygame.Vector2(self.player.rect.center)
+        progress = self._spark_aura_tick_timer / max(0.001, self.SPARK_AURA_TICK_INTERVAL)
+        pulse = 0.86 + (0.14 * abs((progress * 2.0) - 1.0))
+        radius = int(self.SPARK_AURA_RADIUS * pulse)
+        aura_surface = pygame.Surface((radius * 2 + 4, radius * 2 + 4), pygame.SRCALPHA)
+        aura_center = (radius + 2, radius + 2)
+        pygame.draw.circle(aura_surface, (255, 176, 86, 46), aura_center, radius)
+        pygame.draw.circle(aura_surface, (255, 232, 152, 84), aura_center, max(8, int(radius * 0.8)), width=2)
+        pygame.draw.circle(aura_surface, (255, 248, 210, 136), aura_center, max(6, int(radius * 0.58)), width=1)
+        surface.blit(aura_surface, (int(center.x) - radius - 2, int(center.y) - radius - 2))
+
+    def _draw_evolution_feedback_overlay(self, surface: pygame.Surface) -> None:
+        if self._evolution_feedback_timer <= 0.0 or not self._evolution_feedback_label:
+            return
+        if not pygame.font.get_init():
+            pygame.font.init()
+        if self._debug_font is None:
+            self._debug_font = pygame.font.Font(None, 24)
+        title_font = pygame.font.Font(None, 44)
+        subtitle_font = pygame.font.Font(None, 28)
+        alpha = int(255 * min(1.0, self._evolution_feedback_timer / 1.15))
+        title = title_font.render("EVOLVED", True, (255, 232, 156))
+        subtitle = subtitle_font.render(self._evolution_feedback_label, True, (255, 248, 220))
+        title.set_alpha(alpha)
+        subtitle.set_alpha(alpha)
+        title_rect = title.get_rect(center=(surface.get_width() // 2, 76))
+        subtitle_rect = subtitle.get_rect(center=(surface.get_width() // 2, 106))
+        shadow = pygame.Surface((title_rect.width + 24, subtitle_rect.height + 28), pygame.SRCALPHA)
+        shadow.fill((24, 16, 8, int(alpha * 0.42)))
+        shadow_rect = shadow.get_rect(center=(surface.get_width() // 2, 90))
+        surface.blit(shadow, shadow_rect)
+        surface.blit(title, title_rect)
+        surface.blit(subtitle, subtitle_rect)
 
     def _create_player(self) -> Player:
         size = 80

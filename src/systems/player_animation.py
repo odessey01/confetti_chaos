@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Callable
 
 import pygame
@@ -20,6 +22,7 @@ class AnimationClipConfig:
     loop_mode: str = "loop"
     extraction_mode: str = "grid"
     bbox_guide_path: str | None = None
+    frame_rects_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,7 @@ class LoadedCharacterAnimation:
 
 
 def _default_bear_clip(path: str, *, fps: float) -> AnimationClipConfig:
+    cache_path = path.replace(".png", ".frames.json")
     return AnimationClipConfig(
         sheet_path=path,
         rows=5,
@@ -63,6 +67,7 @@ def _default_bear_clip(path: str, *, fps: float) -> AnimationClipConfig:
         loop_mode="loop",
         extraction_mode="bbox_guide",
         bbox_guide_path=path,
+        frame_rects_path=cache_path,
     )
 
 
@@ -123,6 +128,13 @@ def _safe_load_sheet(path_value: str) -> pygame.Surface | None:
             return loaded.copy()
     except (pygame.error, FileNotFoundError, OSError):
         return None
+
+
+def _resolve_data_path(path_value: str) -> Path:
+    maybe_absolute = Path(path_value)
+    if maybe_absolute.is_absolute():
+        return maybe_absolute
+    return asset_path(*path_value.split("/"))
 
 
 def _extract_frames(sheet: pygame.Surface, *, rows: int, columns: int) -> tuple[pygame.Surface, ...]:
@@ -186,9 +198,18 @@ def _sort_rects_row_major(rects: list[pygame.Rect]) -> list[pygame.Rect]:
 
 
 def _inset_rect_for_bbox_content(rect: pygame.Rect) -> pygame.Rect:
-    if rect.width < 3 or rect.height < 3:
+    return _inset_rect(rect, inset_pixels=1)
+
+
+def _inset_rect(rect: pygame.Rect, *, inset_pixels: int) -> pygame.Rect:
+    inset = max(0, int(inset_pixels))
+    if inset <= 0:
         return rect
-    return rect.inflate(-2, -2)
+    min_size = (inset * 2) + 1
+    if rect.width < min_size or rect.height < min_size:
+        return rect
+    shrink = inset * 2
+    return rect.inflate(-shrink, -shrink)
 
 
 def _clear_bbox_red_pixels(frame: pygame.Surface) -> None:
@@ -237,10 +258,87 @@ def _extract_frames_from_bbox_guide(
     return tuple(frames)
 
 
+def _load_frame_rect_cache(
+    frame_rects_path: str,
+    *,
+    expected_sheet_path: str | None = None,
+) -> tuple[tuple[pygame.Rect, ...], int] | None:
+    try:
+        data_path = _resolve_data_path(frame_rects_path)
+        raw = data_path.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if expected_sheet_path is not None:
+        cached_sheet = payload.get("sheet_path")
+        if isinstance(cached_sheet, str) and cached_sheet and cached_sheet != expected_sheet_path:
+            return None
+    rect_entries = payload.get("frame_rects")
+    if not isinstance(rect_entries, list) or len(rect_entries) == 0:
+        return None
+    rects: list[pygame.Rect] = []
+    for entry in rect_entries:
+        if not isinstance(entry, dict):
+            return None
+        try:
+            x = int(entry["x"])
+            y = int(entry["y"])
+            w = int(entry["w"])
+            h = int(entry["h"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        rects.append(pygame.Rect(x, y, w, h))
+    inset_pixels = max(0, int(payload.get("content_inset", 1)))
+    return tuple(rects), inset_pixels
+
+
+def _extract_frames_from_cached_rects(
+    target_sheet: pygame.Surface,
+    frame_rects: tuple[pygame.Rect, ...],
+    *,
+    inset_pixels: int,
+) -> tuple[pygame.Surface, ...]:
+    frames: list[pygame.Surface] = []
+    sheet_bounds = target_sheet.get_rect()
+    for raw_rect in frame_rects:
+        clipped = pygame.Rect(raw_rect).clip(sheet_bounds)
+        if clipped.width <= 0 or clipped.height <= 0:
+            continue
+        content_rect = _inset_rect(clipped, inset_pixels=inset_pixels)
+        if content_rect.width <= 0 or content_rect.height <= 0:
+            continue
+        frame = target_sheet.subsurface(content_rect).copy()
+        _clear_bbox_red_pixels(frame)
+        frames.append(frame)
+    return tuple(frames)
+
+
 def _load_clip(config: AnimationClipConfig) -> LoadedAnimationClip:
     sheet = _safe_load_sheet(config.sheet_path)
     if sheet is None:
         return LoadedAnimationClip(frames=(), fps=max(1.0, float(config.fps)), available=False)
+    if config.frame_rects_path:
+        cached = _load_frame_rect_cache(
+            config.frame_rects_path,
+            expected_sheet_path=config.sheet_path,
+        )
+        if cached is not None:
+            frame_rects, inset_pixels = cached
+            cached_frames = _extract_frames_from_cached_rects(
+                sheet,
+                frame_rects,
+                inset_pixels=inset_pixels,
+            )
+            if len(cached_frames) > 0:
+                return LoadedAnimationClip(
+                    frames=cached_frames,
+                    fps=max(1.0, float(config.fps)),
+                    available=True,
+                )
     if config.extraction_mode == "bbox_guide" and config.bbox_guide_path:
         guide = _safe_load_sheet(config.bbox_guide_path)
         if guide is not None:

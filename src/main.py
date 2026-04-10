@@ -20,12 +20,17 @@ from systems import (
     MIN_START_LEVEL,
     assets_dir,
     clamp_selected_start_level,
+    get_character_unlock_condition,
     get_character_passive,
     load_high_score,
     get_party_animal,
     get_weapon_definition,
+    is_character_unlocked,
+    load_meta_progression,
+    refresh_meta_unlock_state,
     load_settings,
     save_high_score,
+    save_meta_progression,
     save_settings,
     saves_dir,
 )
@@ -38,6 +43,7 @@ TARGET_FPS = 60
 HAZARD_COUNT = 1
 LEVEL_UP_CONFIRM_DELAY_SECONDS = 0.35
 LEVEL_UP_EXIT_INVULNERABILITY_SECONDS = 1.0
+UNLOCK_NOTIFICATION_SECONDS = 3.0
 START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Toggle Aim Assist", "Quit")
 PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Toggle Aim Assist", "Quit to Menu")
 PLAYER_SELECT_NOTES = {
@@ -46,7 +52,6 @@ PLAYER_SELECT_NOTES = {
     "fox_f": "Clever plush",
     "cat_f": "Cozy cat",
 }
-ENABLED_PLAYER_SELECT_IDS: tuple[str, ...] = ("teddy_f",)
 
 
 class GameState(str, Enum):
@@ -250,6 +255,9 @@ def main() -> int:
     audio = AudioManager()
     input_controller = InputController()
     runtime_settings = load_settings()
+    meta_progression = load_meta_progression()
+    if refresh_meta_unlock_state(meta_progression):
+        save_meta_progression(meta_progression)
     audio.set_enabled(runtime_settings.music_enabled)
     audio.apply_mix(
         master=runtime_settings.master_volume,
@@ -262,12 +270,18 @@ def main() -> int:
     background = BackgroundRenderer((WINDOW_WIDTH, WINDOW_HEIGHT))
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
-    player_select_ids: tuple[str, ...] = (
+    all_player_select_ids: tuple[str, ...] = (
         PLAYABLE_PARTY_ANIMAL_IDS if PLAYABLE_PARTY_ANIMAL_IDS else ("teddy_f",)
     )
+    player_select_ids: tuple[str, ...] = tuple(
+        variant_id
+        for variant_id in all_player_select_ids
+        if is_character_unlocked(meta_progression, get_party_animal(variant_id).variant_id)
+    )
+    if not player_select_ids:
+        player_select_ids = ("teddy_f",)
     player_select_enabled: tuple[bool, ...] = tuple(
-        get_party_animal(variant_id).variant_id in ENABLED_PLAYER_SELECT_IDS
-        for variant_id in player_select_ids
+        True for _ in player_select_ids
     )
 
     state = GameState.PLAYER_SELECT
@@ -290,9 +304,15 @@ def main() -> int:
     level_up_choice_index = 0
     level_up_input_lock_timer = 0.0
     show_player_debug = False
+    current_run_boss_defeats = 0
+    unlock_notification_timer = 0.0
+    unlock_notification_text = ""
     running = True
     while running:
+        if player_select_ids:
+            player_select_index = max(0, min(player_select_index, len(player_select_ids) - 1))
         delta_seconds = clock.tick(TARGET_FPS) / 1000.0
+        unlock_notification_timer = max(0.0, unlock_notification_timer - delta_seconds)
         level_up_input_lock_timer = max(0.0, level_up_input_lock_timer - delta_seconds)
         attack = False
         for event in pygame.event.get():
@@ -364,6 +384,7 @@ def main() -> int:
                         player_animal_id=selected_variant,
                         weapon_id=selected_weapon_id,
                     )
+                    current_run_boss_defeats = 0
                     audio.play_start_or_restart()
                     audio.play_sfx("ui_confirm")
                     visual_feedback.trigger_state_transition()
@@ -383,6 +404,8 @@ def main() -> int:
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_confirm(event):
                     action = pause_menu_action_for_index(pause_menu_index)
                     audio.play_sfx(ui_sfx_for_pause_action(action))
+                    if action in (PauseMenuAction.RESTART, PauseMenuAction.QUIT_TO_MENU):
+                        current_run_boss_defeats = 0
                     state = execute_pause_menu_action(
                         action,
                         state=state,
@@ -432,6 +455,7 @@ def main() -> int:
                     audio.play_sfx("ui_confirm")
                     state = transition_state(state, GameState.PLAYING)
                     session.start_new_run(start_level=runtime_settings.selected_start_level)
+                    current_run_boss_defeats = 0
                     audio.play_start_or_restart()
                     visual_feedback.trigger_state_transition()
 
@@ -463,6 +487,40 @@ def main() -> int:
                 if session.score_value > high_score:
                     high_score = session.score_value
                     save_high_score(high_score)
+                meta_progression.total_runs_completed = max(
+                    0,
+                    int(meta_progression.total_runs_completed) + 1,
+                )
+                meta_progression.bosses_defeated = max(
+                    0,
+                    int(meta_progression.bosses_defeated) + int(current_run_boss_defeats),
+                )
+                meta_progression.best_score = max(
+                    int(meta_progression.best_score),
+                    int(session.score_value),
+                )
+                unlocked_before = set(str(item) for item in meta_progression.unlocked_characters)
+                refresh_meta_unlock_state(meta_progression)
+                unlocked_after = set(str(item) for item in meta_progression.unlocked_characters)
+                newly_unlocked = sorted(unlocked_after - unlocked_before)
+                if newly_unlocked:
+                    names = [get_party_animal(item).display_name for item in newly_unlocked]
+                    unlock_notification_text = f"Unlocked: {', '.join(names)}"
+                    unlock_notification_timer = UNLOCK_NOTIFICATION_SECONDS
+                    audio.play_sfx("milestone_clear")
+                    player_select_ids = tuple(
+                        variant_id
+                        for variant_id in all_player_select_ids
+                        if is_character_unlocked(
+                            meta_progression,
+                            get_party_animal(variant_id).variant_id,
+                        )
+                    )
+                    if not player_select_ids:
+                        player_select_ids = ("teddy_f",)
+                    player_select_enabled = tuple(True for _ in player_select_ids)
+                    player_select_index = max(0, min(player_select_index, len(player_select_ids) - 1))
+                save_meta_progression(meta_progression)
                 state = transition_state(state, GameState.GAME_OVER)
                 visual_feedback.trigger_state_transition()
 
@@ -479,6 +537,7 @@ def main() -> int:
                 audio.play_sfx("boss_hit")
             if audio_cues["boss_defeat"]:
                 audio.play_sfx("boss_defeat")
+                current_run_boss_defeats += 1
             if audio_cues["boss_phase_change"]:
                 audio.play_sfx("milestone_clear")
             if audio_cues["milestone_clear"]:
@@ -506,6 +565,8 @@ def main() -> int:
                 audio.play_sfx("balloon_hit")
             for _ in range(min(6, int(audio_cues["xp_pickup_count"]))):
                 audio.play_sfx("ui_nav")
+            for _ in range(min(2, int(audio_cues["evolution_count"]))):
+                audio.play_sfx("milestone_clear")
 
             for center in session.consume_spawn_pulse_centers():
                 visual_feedback.add_spawn_pulse(center)
@@ -574,6 +635,13 @@ def main() -> int:
             session.player.size = 80
             selected_note = PLAYER_SELECT_NOTES.get(selected_variant_id, "")
             passive = get_character_passive(selected_variant_id)
+            selected_is_locked = not player_select_enabled[player_select_index]
+            unlock_condition = get_character_unlock_condition(selected_variant_id)
+            unlock_hint = (
+                str(unlock_condition.description)
+                if selected_is_locked and unlock_condition is not None
+                else ""
+            )
             option_names = (
                 tuple(get_party_animal(v).display_name for v in player_select_ids)
                 if player_select_ids
@@ -590,6 +658,8 @@ def main() -> int:
                 passive_drawback=passive.passive_drawback,
                 passive_summary=("Tougher, Slower" if selected_variant_id == "teddy_f" else None),
                 selected_weapon_name=get_weapon_definition(selected_weapon_id).display_name,
+                selected_locked=selected_is_locked,
+                selected_unlock_hint=unlock_hint,
             )
         elif state == GameState.PLAYING:
             session.draw_playing(world_surface)
@@ -612,6 +682,17 @@ def main() -> int:
                 charge=int(super_snapshot["charge"]),
                 max_charge=int(super_snapshot["max_charge"]),
                 ready=bool(super_snapshot["ready"]),
+            )
+            weapon_snapshot = session.active_weapon_snapshot()
+            evolution_snapshot = session.weapon_evolution_snapshot()
+            active_forms = evolution_snapshot["active_forms_by_weapon"]
+            evolved_form_id = None
+            if isinstance(active_forms, dict):
+                evolved_form_id = active_forms.get(weapon_snapshot["weapon_id"])
+            ui.draw_weapon_evolution_state(
+                world_surface,
+                weapon_name=str(weapon_snapshot["display_name"]),
+                evolved_form_id=str(evolved_form_id) if evolved_form_id else None,
             )
             if show_player_debug:
                 session.draw_player_debug_overlay(world_surface)
@@ -646,6 +727,17 @@ def main() -> int:
                 max_charge=int(super_snapshot["max_charge"]),
                 ready=bool(super_snapshot["ready"]),
             )
+            weapon_snapshot = session.active_weapon_snapshot()
+            evolution_snapshot = session.weapon_evolution_snapshot()
+            active_forms = evolution_snapshot["active_forms_by_weapon"]
+            evolved_form_id = None
+            if isinstance(active_forms, dict):
+                evolved_form_id = active_forms.get(weapon_snapshot["weapon_id"])
+            ui.draw_weapon_evolution_state(
+                world_surface,
+                weapon_name=str(weapon_snapshot["display_name"]),
+                evolved_form_id=str(evolved_form_id) if evolved_form_id else None,
+            )
             if show_player_debug:
                 session.draw_player_debug_overlay(world_surface)
                 session.draw_aim_assist_debug_overlay(world_surface)
@@ -678,13 +770,24 @@ def main() -> int:
                 max_charge=int(super_snapshot["max_charge"]),
                 ready=bool(super_snapshot["ready"]),
             )
+            weapon_snapshot = session.active_weapon_snapshot()
+            evolution_snapshot = session.weapon_evolution_snapshot()
+            active_forms = evolution_snapshot["active_forms_by_weapon"]
+            evolved_form_id = None
+            if isinstance(active_forms, dict):
+                evolved_form_id = active_forms.get(weapon_snapshot["weapon_id"])
+            ui.draw_weapon_evolution_state(
+                world_surface,
+                weapon_name=str(weapon_snapshot["display_name"]),
+                evolved_form_id=str(evolved_form_id) if evolved_form_id else None,
+            )
             if show_player_debug:
                 session.draw_player_debug_overlay(world_surface)
                 session.draw_aim_assist_debug_overlay(world_surface)
             ui.draw_level_up_overlay(
                 world_surface,
                 run_level=session.run_level,
-                options=session.current_upgrade_choices(),
+                options=session.current_upgrade_choice_previews(),
                 selected_index=level_up_choice_index,
             )
         else:
@@ -695,6 +798,9 @@ def main() -> int:
             ui.draw_state_text(world_surface, label)
 
         visual_feedback.draw_overlays(world_surface)
+        if unlock_notification_timer > 0.0 and unlock_notification_text:
+            fade = min(1.0, unlock_notification_timer / 0.4)
+            ui.draw_unlock_notification(world_surface, unlock_notification_text, alpha=fade)
 
         shake_x, shake_y = visual_feedback.camera_offset()
         screen.fill((12, 12, 16))
@@ -703,6 +809,7 @@ def main() -> int:
         pygame.display.flip()
 
     save_settings(runtime_settings)
+    save_meta_progression(meta_progression)
     pygame.quit()
     return 0
 

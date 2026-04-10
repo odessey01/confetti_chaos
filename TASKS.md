@@ -2193,7 +2193,7 @@ Prepare Sparkler for later upgrade/evolution into wider melee and aura forms.
 
 ## Task 278 – XP Drop Entity System Foundation
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -2223,7 +2223,7 @@ Create a world pickup entity for XP that drops from defeated enemies.
 
 ## Task 279 – Enemy Death Refactor to Spawn XP Drops
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -2256,7 +2256,7 @@ Change enemy deaths so they spawn XP drops instead of awarding XP instantly.
 
 ## Task 280 – XP Drop Visual Identity
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -2286,7 +2286,7 @@ Make XP drops readable, attractive, and on-theme.
 
 ## Task 281 – Player XP Pickup Collision
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -2314,7 +2314,7 @@ Allow the player to collect XP drops by moving over them.
 
 ## Task 282 – XP Pickup Feedback
 
-**Status:** TODO
+**Status:** DONE
 
 ### Objective
 
@@ -2508,6 +2508,546 @@ Tune XP pickups so they improve gameplay without becoming frustrating or trivial
 * Players are encouraged to move and collect without undue frustration
 * System improves the survivor gameplay loop overall
 
+## Task 289 – Upgrade Tagging System Foundation
+
+**Status:** DONE
+
+### Objective
+
+Introduce a tagging system for upgrades to support weapon evolution conditions.
+
+### Requirements
+
+* Each upgrade can include one or more tags, such as:
+
+  * `rocket_explosion`
+  * `rocket_split`
+  * `sparkler_range`
+  * `sparkler_speed`
+
+* Store tags in upgrade definitions
+
+* Ensure tags are easily queryable at runtime
+
+### Acceptance Criteria
+
+* Upgrades can be tagged with meaningful identifiers
+* Player state can track acquired tags
+* System is extensible for future upgrades
+
+---
+
+## Task 290 – Player Upgrade State Tracking
+
+**Status:** DONE
+
+### Objective
+
+Track all upgrades and tags acquired during a run.
+
+### Requirements
+
+* Maintain a structure for:
+
+  * acquired upgrades
+  * accumulated tags
+
+* Ensure:
+
+  * tags persist across the run
+  * tags can be queried efficiently
+
+### Acceptance Criteria
+
+* Player upgrade state reflects all chosen upgrades
+* Tag queries return correct results
+* System supports evolution checks
+
+---
+
+## Task 291 – Evolution Definition System
+
+**Status:** DONE
+
+### Objective
+
+Define weapon evolutions using tag combinations.
+
+### Requirements
+
+* Create a structure for evolutions including:
+
+  * weapon id
+  * required tags
+  * resulting evolved form
+
+* Example:
+
+  * Bottle Rocket + (`rocket_explosion` + `rocket_split`) → Burst Rocket
+
+* Keep definitions centralized and data-driven
+
+### Acceptance Criteria
+
+* Evolutions are defined without hardcoding logic into weapons
+* New evolutions can be added easily
+* System supports multiple weapons
+
+---
+
+## Task 292 – Evolution Condition Checker
+
+**Status:** DONE
+
+### Objective
+
+Detect when a player meets the requirements for a weapon evolution.
+
+### Requirements
+
+* On upgrade acquisition:
+
+  * check if required tag combinations are satisfied
+
+* Ensure:
+
+  * evolutions trigger only once
+  * no duplicate evolutions occur
+
+### Acceptance Criteria
+
+* Evolution conditions are evaluated correctly
+* Evolutions trigger when requirements are met
+* System prevents repeated triggers
+
+---
+
+## Task 293 – Weapon Evolution Application
+
+**Status:** DONE
+
+### Objective
+
+Transform a weapon into its evolved form.
+
+### Requirements
+
+* Replace or modify weapon behavior when evolved:
+
+  * update projectile logic
+  * update visuals/effects
+  * update damage behavior
+
+* Preserve compatibility with:
+
+  * aim assist
+  * existing upgrades
+
+### Acceptance Criteria
+
+* Weapon behavior changes correctly after evolution
+* No regressions in firing or damage systems
+* Evolution feels distinct from base weapon
+
+---
+
+## Task 294 – Bottle Rocket Evolution: Burst Rocket
+
+**Status:** DONE
+
+### Objective
+
+Create the first bottle rocket evolution that splits into multiple projectiles.
+
+### Requirements
+
+* Trigger condition:
+
+  * `rocket_explosion` + `rocket_split`
+
+* On explosion:
+
+  * spawn multiple smaller rockets or fragments
+  * maintain readability and performance
+
+* Keep spread controlled and predictable
+
+### Acceptance Criteria
+
+* Burst Rocket triggers correctly
+* Explosion produces multiple projectiles
+* Behavior is fun and readable
+
+---
+
+## Task 295 – Bottle Rocket Evolution: Big Pop Rocket
+
+**Status:** DONE
+
+### Objective
+
+Create a bottle rocket evolution with larger explosion impact.
+
+### Requirements
+
+* Trigger condition:
+
+  * `rocket_explosion` + `rocket_power`
+
+* Increase:
+
+  * explosion radius
+  * visual intensity
+
+* Keep balance so it doesn’t trivialize gameplay
+
+### Acceptance Criteria
+
+* Explosion is noticeably larger and more impactful
+* Evolution triggers correctly
+* Gameplay remains balanced
+
+---
+
+## Task 296 – Sparkler Evolution: Wide Arc
+
+**Status:** DONE
+
+### Objective
+
+Enhance sparkler melee reach and coverage.
+
+### Requirements
+
+* Trigger condition:
+
+  * `sparkler_range` + `sparkler_speed`
+
+* Increase:
+
+  * attack arc width
+  * slightly increase range
+
+* Maintain directional feel
+
+### Acceptance Criteria
+
+* Sparkler covers a larger area
+* Attack remains readable and controlled
+* Evolution feels like a clear upgrade
+
+---
+
+## Task 297 – Sparkler Evolution: Spark Aura
+
+**Status:** DONE
+
+### Objective
+
+Transform sparkler into a continuous damage aura.
+
+### Requirements
+
+* Trigger condition:
+
+  * `sparkler_range` + `sparkler_persistence`
+
+* Replace baton behavior with:
+
+  * circular damage aura
+  * periodic damage ticks
+
+* Add clear visual identity for aura
+
+### Acceptance Criteria
+
+* Sparkler transitions into aura behavior
+* Damage is applied consistently over time
+* Aura is visually clear and distinct
+
+---
+
+## Task 298 – Evolution Feedback System
+
+**Status:** DONE
+
+### Objective
+
+Make weapon evolutions feel like impactful moments.
+
+### Requirements
+
+* On evolution trigger:
+
+  * brief pause or slowdown
+  * visual burst (confetti/firework)
+  * optional sound cue
+  * optional on-screen text (e.g., “EVOLVED”)
+
+* Ensure feedback is noticeable but not disruptive
+
+### Acceptance Criteria
+
+* Evolution events feel rewarding and memorable
+* Player clearly understands an evolution occurred
+* Feedback integrates smoothly with gameplay
+
+---
+
+## Task 299 – Evolution UI Indicator
+
+**Status:** DONE
+
+### Objective
+
+Show players their weapon evolution state.
+
+### Requirements
+
+* Indicate:
+
+  * current weapon form
+  * whether evolution has occurred
+
+* Optional:
+
+  * show partial progress (future enhancement)
+
+* Keep UI minimal and readable
+
+### Acceptance Criteria
+
+* Player can identify evolved weapons visually or via UI
+* UI remains clean and non-intrusive
+* Evolution state is clear during gameplay
+
+---
+
+## Task 300 – Evolution Balance & Playtest Pass
+
+**Status:** DONE
+
+### Objective
+
+Ensure evolutions feel powerful but not game-breaking.
+
+### Requirements
+
+* Validate:
+
+  * evolution frequency
+  * power spike impact
+  * synergy with enemies and bosses
+  * performance under heavy effects
+
+* Adjust:
+
+  * tag requirements
+  * effect strength
+  * spawn counts
+
+### Acceptance Criteria
+
+* Evolutions feel exciting but fair
+* Builds feel distinct across runs
+* System supports replayability without overpowering gameplay
+
+---
+
+## Task 301 – Meta Progression Data Structure Foundation
+
+**Status:** DONE
+
+### Objective
+
+Create a data structure to track persistent character unlocks across game sessions.
+
+### Requirements
+
+* Define a meta progression structure that includes:
+
+  * unlocked characters list
+  * unlock conditions met
+
+* Keep data simple and extensible for future meta features
+
+* Store in a separate file from settings (e.g., `meta_progression.json`)
+
+### Acceptance Criteria
+
+* Meta progression data can be loaded and saved
+* Structure supports character unlock tracking
+* Data is isolated from runtime settings
+
+---
+
+## Task 302 – Character Unlock Conditions Definition
+
+**Status:** DONE
+
+### Objective
+
+Define the requirements for unlocking each character.
+
+### Requirements
+
+* Create unlock conditions such as:
+
+  * Bear: unlocked by default
+  * Bunny: complete 5 runs
+  * Cat: reach high score of 10,000
+  * Raccoon: defeat 10 bosses
+
+* Keep conditions data-driven and tunable
+
+* Ensure conditions are achievable but require progression
+
+### Acceptance Criteria
+
+* Each character has clear unlock requirements
+* Conditions are balanced for replayability
+* System can check conditions against player progress
+
+---
+
+## Task 303 – Meta Progression Persistence
+
+**Status:** DONE
+
+### Objective
+
+Implement saving and loading of meta progression data.
+
+### Requirements
+
+* Load meta progression on game start
+* Save after unlock achievements
+* Handle missing/corrupt files gracefully
+* Integrate with existing save system patterns
+
+### Acceptance Criteria
+
+* Unlocks persist across game sessions
+* Data loads correctly on startup
+* No crashes from missing meta files
+
+---
+
+## Task 304 – Character Unlock State Tracking
+
+**Status:** DONE
+
+### Objective
+
+Track which characters are unlocked based on meta progression.
+
+### Requirements
+
+* Check unlock conditions against current meta state
+* Provide a way to query if a character is available
+* Update unlock state when conditions are met
+
+### Acceptance Criteria
+
+* Character availability is determined correctly
+* Unlocks trigger when conditions are satisfied
+* System integrates with character selection logic
+
+---
+
+## Task 305 – Locked Character UI Presentation
+
+**Status:** DONE
+
+### Objective
+
+Show locked characters clearly in the character selection UI.
+
+### Requirements
+
+* For locked characters, display:
+
+  * locked icon or overlay
+  * unlock requirement hint
+  * prevent selection
+
+* Keep presentation consistent with existing UI style
+
+### Acceptance Criteria
+
+* Locked characters are visually distinct
+* Players understand how to unlock them
+* UI remains clean and readable
+
+---
+
+## Task 306 – Unlock Achievement Feedback
+
+**Status:** DONE
+
+### Objective
+
+Provide satisfying feedback when a character is unlocked.
+
+### Requirements
+
+* On unlock:
+
+  * show notification or popup
+  * optional sound/visual effect
+  * update UI immediately
+
+* Keep feedback lightweight and thematic
+
+### Acceptance Criteria
+
+* Unlocking a character feels rewarding
+* Feedback is clear and non-disruptive
+* Player understands the unlock occurred
+
+---
+
+## Task 307 – Integration with Start Menu
+
+**Status:** DONE
+
+### Objective
+
+Ensure character selection respects unlock state.
+
+### Requirements
+
+* Update start menu to show only unlocked characters
+* Allow selection of unlocked characters
+* Maintain compatibility with existing menu flow
+
+### Acceptance Criteria
+
+* Only unlocked characters can be selected
+* Start menu updates correctly after unlocks
+* No regressions in menu navigation
+
+---
+
+## Task 308 – Unlock Balance and Validation
+
+**Status:** DONE
+
+### Objective
+
+Tune unlock conditions and validate the system works end-to-end.
+
+### Requirements
+
+* Test unlock paths for each character
+* Adjust conditions for fair progression
+* Ensure unlocks encourage replay without frustration
+
+### Acceptance Criteria
+
+* Unlock conditions are achievable and motivating
+* System works reliably in gameplay
+* Meta progression enhances replayability
 
 # Execution Rules for Agents
 

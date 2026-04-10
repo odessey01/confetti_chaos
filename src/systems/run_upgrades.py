@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import random
 
+from .weapon_evolutions import list_weapon_evolutions
+
+
+EVOLUTION_TAG_WEIGHT_MULTIPLIER = 1.85
+
 
 @dataclass(frozen=True)
 class UpgradeDefinition:
@@ -17,6 +22,7 @@ class UpgradeDefinition:
     repeatable: bool = True
     weight: float = 1.0
     allowed_weapon_ids: tuple[str, ...] | None = None
+    tags: tuple[str, ...] = ()
 
 
 UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
@@ -37,6 +43,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         effect_values={"fire_rate_mult": 0.11},
         max_stacks=5,
         weight=1.0,
+        tags=("rocket_speed", "sparkler_speed"),
     ),
     UpgradeDefinition(
         id="projectile_speed_up",
@@ -47,6 +54,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=5,
         weight=0.9,
         allowed_weapon_ids=("bottle_rocket",),
+        tags=("rocket_speed",),
     ),
     UpgradeDefinition(
         id="projectile_cap_up",
@@ -57,6 +65,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=2,
         weight=0.65,
         allowed_weapon_ids=("bottle_rocket",),
+        tags=("rocket_split",),
     ),
     UpgradeDefinition(
         id="confetti_burst_up",
@@ -66,6 +75,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         effect_values={"confetti_bonus": 2.0},
         max_stacks=4,
         weight=0.8,
+        tags=("rocket_explosion",),
     ),
     UpgradeDefinition(
         id="score_bonus",
@@ -94,6 +104,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=3,
         weight=0.75,
         allowed_weapon_ids=("bottle_rocket",),
+        tags=("rocket_power",),
     ),
     UpgradeDefinition(
         id="sparkler_range_up",
@@ -104,6 +115,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=4,
         weight=0.8,
         allowed_weapon_ids=("sparkler",),
+        tags=("sparkler_range",),
     ),
     UpgradeDefinition(
         id="sparkler_damage_up",
@@ -114,6 +126,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=3,
         weight=0.8,
         allowed_weapon_ids=("sparkler",),
+        tags=("sparkler_power",),
     ),
     UpgradeDefinition(
         id="sparkler_arc_up",
@@ -124,6 +137,7 @@ UPGRADE_DEFINITIONS: tuple[UpgradeDefinition, ...] = (
         max_stacks=3,
         weight=0.75,
         allowed_weapon_ids=("sparkler",),
+        tags=("sparkler_persistence",),
     ),
 )
 
@@ -134,12 +148,20 @@ class RunUpgradeSystem:
         self._defs = {definition.id: definition for definition in UPGRADE_DEFINITIONS}
         self.stacks: dict[str, int] = {}
         self.current_choices: list[UpgradeDefinition] = []
+        self._acquired_tags: set[str] = set()
 
     def reset(self) -> None:
         self.stacks.clear()
         self.current_choices = []
+        self._acquired_tags.clear()
 
-    def generate_choices(self, *, count: int = 3, active_weapon_id: str | None = None) -> list[UpgradeDefinition]:
+    def generate_choices(
+        self,
+        *,
+        count: int = 3,
+        active_weapon_id: str | None = None,
+        evolution_exclude_ids: tuple[str, ...] | list[str] | set[str] = (),
+    ) -> list[UpgradeDefinition]:
         valid = [
             definition
             for definition in self._defs.values()
@@ -151,8 +173,12 @@ class RunUpgradeSystem:
         picked: list[UpgradeDefinition] = []
         pool = list(valid)
         target = max(1, count)
+        evolution_target_tags = self._evolution_target_tags(
+            active_weapon_id=active_weapon_id,
+            evolution_exclude_ids=evolution_exclude_ids,
+        )
         while pool and len(picked) < target:
-            picked_definition = self._weighted_pick(pool)
+            picked_definition = self._weighted_pick(pool, evolution_target_tags=evolution_target_tags)
             picked.append(picked_definition)
             pool = [candidate for candidate in pool if candidate.id != picked_definition.id]
         self.current_choices = picked
@@ -163,6 +189,7 @@ class RunUpgradeSystem:
         if definition is None or not self.is_valid_choice(upgrade_id, active_weapon_id=active_weapon_id):
             return False
         self.stacks[upgrade_id] = self.stacks.get(upgrade_id, 0) + 1
+        self._acquired_tags.update(definition.tags)
         self.current_choices = []
         return True
 
@@ -192,14 +219,46 @@ class RunUpgradeSystem:
                 effects[key] = effects.get(key, 0.0) + (float(value) * count)
         return effects
 
-    def _weighted_pick(self, pool: list[UpgradeDefinition]) -> UpgradeDefinition:
-        total = sum(max(0.0, definition.weight) for definition in pool)
+    def tags_for_upgrade(self, upgrade_id: str) -> tuple[str, ...]:
+        definition = self._defs.get(upgrade_id)
+        if definition is None:
+            return ()
+        return tuple(definition.tags)
+
+    def acquired_upgrade_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(upgrade_id for upgrade_id, count in self.stacks.items() if count > 0))
+
+    def acquired_tags(self) -> tuple[str, ...]:
+        return tuple(sorted(self._acquired_tags))
+
+    def has_tag(self, tag: str) -> bool:
+        return str(tag) in self._acquired_tags
+
+    def has_all_tags(self, tags: tuple[str, ...] | list[str] | set[str]) -> bool:
+        required = {str(tag) for tag in tags}
+        if not required:
+            return True
+        return required.issubset(self._acquired_tags)
+
+    def _weighted_pick(
+        self,
+        pool: list[UpgradeDefinition],
+        *,
+        evolution_target_tags: set[str] | None = None,
+    ) -> UpgradeDefinition:
+        target_tags = evolution_target_tags or set()
+        total = sum(
+            max(0.0, definition.weight) * self._evolution_weight_multiplier(definition, target_tags)
+            for definition in pool
+        )
         if total <= 0.0:
             return pool[0]
         roll = self._rng.random() * total
         cumulative = 0.0
         for definition in pool:
-            cumulative += max(0.0, definition.weight)
+            base_weight = max(0.0, definition.weight)
+            adjusted = base_weight * self._evolution_weight_multiplier(definition, target_tags)
+            cumulative += adjusted
             if roll <= cumulative:
                 return definition
         return pool[-1]
@@ -210,3 +269,58 @@ class RunUpgradeSystem:
         if active_weapon_id is None:
             return True
         return str(active_weapon_id) in definition.allowed_weapon_ids
+
+    def _evolution_target_tags(
+        self,
+        *,
+        active_weapon_id: str | None,
+        evolution_exclude_ids: tuple[str, ...] | list[str] | set[str],
+    ) -> set[str]:
+        if not active_weapon_id:
+            return set()
+        excluded = {str(item) for item in evolution_exclude_ids}
+        acquired = {str(tag) for tag in self._acquired_tags}
+        target_tags: set[str] = set()
+        for definition in list_weapon_evolutions():
+            if definition.weapon_id != str(active_weapon_id):
+                continue
+            if definition.evolution_id in excluded:
+                continue
+            missing = {str(tag) for tag in definition.required_tags if str(tag) not in acquired}
+            target_tags.update(missing)
+        return target_tags
+
+    def _evolution_weight_multiplier(self, definition: UpgradeDefinition, target_tags: set[str]) -> float:
+        if not target_tags:
+            return 1.0
+        matching_tags = target_tags.intersection(str(tag) for tag in definition.tags)
+        if not matching_tags:
+            return 1.0
+        return EVOLUTION_TAG_WEIGHT_MULTIPLIER + (0.2 * max(0, len(matching_tags) - 1))
+
+
+def upgrade_tag_pool() -> tuple[str, ...]:
+    """Return sorted unique tags that exist across all upgrade definitions."""
+    tags: set[str] = set()
+    for definition in UPGRADE_DEFINITIONS:
+        tags.update(str(tag) for tag in definition.tags)
+    return tuple(sorted(tags))
+
+
+def upgrade_ids_by_tag() -> dict[str, tuple[str, ...]]:
+    """Return mapping from tag -> upgrade ids that provide that tag."""
+    mapping: dict[str, list[str]] = {}
+    for definition in UPGRADE_DEFINITIONS:
+        for tag in definition.tags:
+            key = str(tag)
+            if key not in mapping:
+                mapping[key] = []
+            mapping[key].append(definition.id)
+    return {tag: tuple(sorted(ids)) for tag, ids in sorted(mapping.items())}
+
+
+def missing_tags_in_upgrade_pool(required_tags: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
+    """Return required tags that are not represented by any upgrade definition."""
+    pool = set(upgrade_tag_pool())
+    missing = sorted(str(tag) for tag in required_tags if str(tag) not in pool)
+    return tuple(missing)

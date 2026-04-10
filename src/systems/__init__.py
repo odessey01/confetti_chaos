@@ -15,9 +15,32 @@ from .character_supers import (
     CharacterSuperProfile,
     get_character_super,
 )
+from .character_unlocks import (
+    BUNNY_UNLOCK_REQUIRED_RUNS,
+    CAT_UNLOCK_REQUIRED_HIGH_SCORE,
+    CHARACTER_UNLOCK_CONDITIONS,
+    CharacterUnlockCondition,
+    RACCOON_UNLOCK_REQUIRED_BOSSES,
+    UnlockProgressSnapshot,
+    evaluate_unlock_progress,
+    get_character_unlock_condition,
+    get_unlock_condition_by_id,
+    is_character_unlocked,
+    is_unlock_condition_met,
+    list_character_unlock_conditions,
+    refresh_meta_unlock_state,
+    unlock_thresholds_snapshot,
+)
 from .game_session import GameSession
 from .high_score import load_high_score, save_high_score
 from .input_controller import InputController, InputMethod
+from .meta_progression import (
+    DEFAULT_UNLOCKED_CHARACTERS,
+    META_PROGRESSION_FILE_NAME,
+    MetaProgression,
+    load_meta_progression,
+    save_meta_progression,
+)
 from .paths import asset_path, assets_dir, project_root, runtime_root, saves_dir
 from .party_animals import (
     DEFAULT_PARTY_ANIMAL_ID,
@@ -71,6 +94,14 @@ from .weapons import (
     get_weapon_definition,
     list_weapon_definitions,
 )
+from .weapon_evolutions import (
+    WEAPON_EVOLUTION_DEFINITIONS,
+    WeaponEvolutionDefinition,
+    WeaponEvolutionTracker,
+    eligible_weapon_evolutions,
+    get_weapon_evolution,
+    list_weapon_evolutions,
+)
 
 __all__ = [
     "AudioManager",
@@ -86,9 +117,28 @@ __all__ = [
     "CHARACTER_SUPER_PROFILES",
     "DEFAULT_CHARACTER_SUPER_ID",
     "get_character_super",
+    "CharacterUnlockCondition",
+    "BUNNY_UNLOCK_REQUIRED_RUNS",
+    "CAT_UNLOCK_REQUIRED_HIGH_SCORE",
+    "RACCOON_UNLOCK_REQUIRED_BOSSES",
+    "UnlockProgressSnapshot",
+    "CHARACTER_UNLOCK_CONDITIONS",
+    "list_character_unlock_conditions",
+    "get_character_unlock_condition",
+    "get_unlock_condition_by_id",
+    "is_character_unlocked",
+    "is_unlock_condition_met",
+    "evaluate_unlock_progress",
+    "refresh_meta_unlock_state",
+    "unlock_thresholds_snapshot",
     "GameSession",
     "InputController",
     "InputMethod",
+    "MetaProgression",
+    "META_PROGRESSION_FILE_NAME",
+    "DEFAULT_UNLOCKED_CHARACTERS",
+    "load_meta_progression",
+    "save_meta_progression",
     "SpawnController",
     "PartyAnimalVisualConfig",
     "PARTY_ANIMAL_CONFIGS",
@@ -145,4 +195,10 @@ __all__ = [
     "DEFAULT_WEAPON_ID",
     "get_weapon_definition",
     "list_weapon_definitions",
+    "WeaponEvolutionDefinition",
+    "WeaponEvolutionTracker",
+    "WEAPON_EVOLUTION_DEFINITIONS",
+    "list_weapon_evolutions",
+    "get_weapon_evolution",
+    "eligible_weapon_evolutions",
 ]

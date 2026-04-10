@@ -63,6 +63,25 @@ dist/confetti-chaos.exe
   - local dev run: `<repo>/saves`
   - packaged run: `%USERPROFILE%/confetti-chaos/saves`
 
+### Optional animation frame-rect cache
+
+Player animation supports cached frame rectangles to skip bbox color detection at load time.
+
+Regenerate bear caches after updating bbox sheets:
+
+```powershell
+python tools/generate_frame_rect_cache.py
+```
+
+Generated files:
+- `assets/images/player/bear/bbox_bear_walking.frames.json`
+- `assets/images/player/bear/bbox_bear_idle.frames.json`
+
+Runtime behavior:
+- tries `frame_rects_path` cache first
+- falls back to bbox guide detection if cache is missing/invalid
+- falls back to grid extraction if bbox guide is unavailable
+
 ## Validation commands
 
 ```powershell
