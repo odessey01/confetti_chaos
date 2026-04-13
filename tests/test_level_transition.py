@@ -110,7 +110,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
 
     def test_boss_spawns_with_velocity_and_moves(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
-        for _ in range(4):
+        for _ in range(9):
             session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.score_seconds = 0.0
 
@@ -314,7 +314,7 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
                 return "bulwark"
 
         session = _VariantSession(self.bounds, hazard_count=0)
-        for _ in range(4):
+        for _ in range(9):
             session.run_progression.gain_xp(session.run_progression.xp_to_next_level)
         session.score_seconds = 0.0
         session.update_playing(0.2, pygame.Vector2(0, 0), attack=False)
@@ -714,3 +714,4 @@ class LevelTransitionPersistenceTests(unittest.TestCase):
         snake._segment_centers = [pygame.Vector2(center) for _ in range(5)]
         probe = pygame.Rect(int(center.x + 8), int(center.y), 1, 1)
         self.assertFalse(snake.collides_with_rect(probe))
+

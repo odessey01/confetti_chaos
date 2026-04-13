@@ -143,6 +143,25 @@ class BottleRocket:
         )
 
     def draw(self, surface: pygame.Surface) -> None:
+        if bool(getattr(self, "is_sticky_attached", False)):
+            timer_remaining = max(0.0, float(getattr(self, "sticky_timer_remaining", 0.0)))
+            fuse_duration = max(0.001, float(getattr(self, "sticky_fuse_duration", 1.0)))
+            timer_ratio = max(0.0, min(timer_remaining / fuse_duration, 1.0))
+            pulse = 0.55 + (0.45 * abs(math.sin((self._age + (1.0 - timer_ratio)) * math.tau * 4.5)))
+            ring_radius = max(self.size + 2, int(self.size * 1.35))
+            glow_surface = pygame.Surface((ring_radius * 2 + 4, ring_radius * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(
+                glow_surface,
+                (255, 94, 110, int(80 + (90 * pulse))),
+                (ring_radius + 2, ring_radius + 2),
+                ring_radius,
+                width=max(2, int(2 + pulse)),
+            )
+            surface.blit(
+                glow_surface,
+                (int(self.position.x - ring_radius - 2), int(self.position.y - ring_radius - 2)),
+            )
+
         for trail_position, ttl, instability in self._trail_segments:
             ratio = max(0.0, min(1.0, ttl / self.flight_profile.trail_segment_lifetime))
             instability_jitter = 1.0 + (instability * 0.35)
@@ -196,6 +215,16 @@ class BottleRocket:
         stick_start = (body_rect.left - max(2, self.size // 2), half)
         stick_end = (body_rect.left + 1, half)
         pygame.draw.line(rocket_surface, self.stick_color, stick_start, stick_end, width=1)
+
+        if bool(getattr(self, "is_sticky_attached", False)):
+            armed_dot_radius = max(2, self.size // 4)
+            pulse = 0.45 + (0.55 * abs(math.sin((self._age + 0.15) * math.tau * 5.5)))
+            pygame.draw.circle(
+                rocket_surface,
+                (255, int(64 + (60 * pulse)), int(82 + (40 * pulse))),
+                (body_rect.centerx, body_rect.centery),
+                armed_dot_radius + int(pulse),
+            )
 
         angle = -math.degrees(math.atan2(self.direction.y, self.direction.x))
         rotated = pygame.transform.rotate(rocket_surface, angle)

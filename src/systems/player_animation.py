@@ -86,6 +86,7 @@ CHARACTER_ANIMATION_CONFIGS: dict[str, CharacterAnimationConfig] = {
         character_id="bunny_f",
         idle=_default_bear_clip("images/player/bear/bbox_bear_idle.png", fps=5.0),
         walk=_default_bear_clip("images/player/bear/bbox_bear_walking.png", fps=8.0),
+        base_display_scale=0.2375,
     ),
     "fox_f": CharacterAnimationConfig(
         character_id="fox_f",
@@ -100,6 +101,7 @@ CHARACTER_ANIMATION_CONFIGS: dict[str, CharacterAnimationConfig] = {
 }
 
 DEFAULT_CHARACTER_ANIMATION_ID = "teddy_f"
+ANIMATION_PLAYBACK_SPEED_MULTIPLIER = 2.0
 
 _CHARACTER_ANIMATION_REGISTRY: dict[str, CharacterAnimationConfig] = dict(CHARACTER_ANIMATION_CONFIGS)
 
@@ -416,7 +418,7 @@ class PlayerAnimationSystem:
         if not clip.available or len(clip.frames) <= 1:
             return
         frame_duration = 1.0 / max(1.0, clip.fps)
-        self._timer += max(0.0, float(delta_seconds))
+        self._timer += max(0.0, float(delta_seconds)) * ANIMATION_PLAYBACK_SPEED_MULTIPLIER
         while self._timer >= frame_duration:
             self._timer -= frame_duration
             self._frame_index = (self._frame_index + 1) % len(clip.frames)

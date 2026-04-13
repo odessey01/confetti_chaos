@@ -24,11 +24,24 @@ class PartyAnimalIntegrationTests(unittest.TestCase):
     def test_player_anchor_and_hitbox_are_stable(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)
         anchor = session.player_render_anchor()
+        weapon_anchor = session.player_weapon_anchor()
         hitbox_center, hitbox_radius = session.player_hitbox_circle()
         self.assertEqual(anchor[0], session.player.rect.centerx)
         self.assertEqual(anchor[1], session.player.rect.bottom)
+        self.assertGreater(weapon_anchor[0], anchor[0])
+        self.assertLess(weapon_anchor[1], anchor[1])
         self.assertEqual((hitbox_center.x, hitbox_center.y), session.player.rect.center)
         self.assertGreater(hitbox_radius, 0.0)
+
+    def test_weapon_anchor_flips_with_player_facing(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)
+        session.player.facing = pygame.Vector2(1.0, 0.0)
+        right_anchor = session.player_weapon_anchor()
+        session.player.facing = pygame.Vector2(-1.0, 0.0)
+        left_anchor = session.player_weapon_anchor()
+        self.assertGreater(right_anchor[0], session.player.rect.centerx)
+        self.assertLess(left_anchor[0], session.player.rect.centerx)
+        self.assertEqual(right_anchor[1], left_anchor[1])
 
     def test_start_new_run_applies_selected_player_animal(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=1)

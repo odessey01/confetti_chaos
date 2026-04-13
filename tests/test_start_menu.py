@@ -6,6 +6,8 @@ import pathlib
 import sys
 import unittest
 
+import pygame
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -15,12 +17,14 @@ if str(SRC) not in sys.path:
 from main import (  # noqa: E402
     GameState,
     StartMenuAction,
+    draw_player_weapon_preview,
     execute_start_menu_action,
     next_start_level,
     next_start_menu_index,
     start_menu_action_for_index,
     ui_sfx_for_start_action,
 )
+from systems import GameSession  # noqa: E402
 from systems.settings import RuntimeSettings  # noqa: E402
 
 
@@ -152,3 +156,23 @@ class StartMenuValidationTests(unittest.TestCase):
         self.assertEqual(state, GameState.MENU)
         self.assertFalse(running)
         self.assertEqual(saved["count"], 3)
+
+    def test_player_weapon_preview_draws_selected_weapon_overlay(self) -> None:
+        if not pygame.get_init():
+            pygame.init()
+        surface = pygame.Surface((1280, 720), pygame.SRCALPHA)
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+
+        draw_player_weapon_preview(
+            surface,
+            session,
+            variant_id="teddy_f",
+            weapon_id="bottle_rocket",
+            preview_size=120,
+            preview_x=560.0,
+            preview_y=150.0,
+            delta_seconds=1.0 / 60.0,
+        )
+
+        self.assertEqual(session.active_weapon_id, "bottle_rocket")
+        self.assertGreaterEqual(len(session.active_weapon_visual_overlays()), 1)
