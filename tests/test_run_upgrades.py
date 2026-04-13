@@ -49,15 +49,19 @@ class RunUpgradeSystemValidationTests(unittest.TestCase):
     def test_projectile_upgrades_are_invalid_for_sparkler_weapon_context(self) -> None:
         upgrades = RunUpgradeSystem(rng=random.Random(19))
         self.assertFalse(upgrades.is_valid_choice("projectile_speed_up", active_weapon_id="sparkler"))
+        self.assertFalse(upgrades.is_valid_choice("ricochet_rounds", active_weapon_id="sparkler"))
         self.assertFalse(upgrades.is_valid_choice("projectile_damage_up", active_weapon_id="sparkler"))
         self.assertFalse(upgrades.is_valid_choice("projectile_cap_up", active_weapon_id="sparkler"))
         self.assertTrue(upgrades.is_valid_choice("sparkler_range_up", active_weapon_id="sparkler"))
         self.assertTrue(upgrades.is_valid_choice("sparkler_damage_up", active_weapon_id="sparkler"))
         self.assertTrue(upgrades.is_valid_choice("sparkler_arc_up", active_weapon_id="sparkler"))
+        self.assertTrue(upgrades.is_valid_choice("sparkler_duration_up", active_weapon_id="sparkler"))
         self.assertTrue(upgrades.is_valid_choice("projectile_speed_up", active_weapon_id="bottle_rocket"))
+        self.assertTrue(upgrades.is_valid_choice("ricochet_rounds", active_weapon_id="bottle_rocket"))
         self.assertFalse(upgrades.is_valid_choice("sparkler_range_up", active_weapon_id="bottle_rocket"))
         self.assertFalse(upgrades.is_valid_choice("sparkler_damage_up", active_weapon_id="bottle_rocket"))
         self.assertFalse(upgrades.is_valid_choice("sparkler_arc_up", active_weapon_id="bottle_rocket"))
+        self.assertFalse(upgrades.is_valid_choice("sparkler_duration_up", active_weapon_id="bottle_rocket"))
 
     def test_generate_choices_for_sparkler_excludes_projectile_only_upgrades(self) -> None:
         upgrades = RunUpgradeSystem(rng=random.Random(23))
@@ -66,25 +70,42 @@ class RunUpgradeSystemValidationTests(unittest.TestCase):
             choices = upgrades.generate_choices(count=3, active_weapon_id="sparkler")
             ids = {choice.id for choice in choices}
             self.assertNotIn("projectile_speed_up", ids)
+            self.assertNotIn("ricochet_rounds", ids)
             self.assertNotIn("projectile_damage_up", ids)
             self.assertNotIn("projectile_cap_up", ids)
-            if {"sparkler_range_up", "sparkler_damage_up", "sparkler_arc_up"} & ids:
+            if {"sparkler_range_up", "sparkler_damage_up", "sparkler_arc_up", "sparkler_duration_up"} & ids:
                 saw_sparkler_specific = True
         self.assertTrue(saw_sparkler_specific)
 
     def test_upgrade_tags_are_queryable_and_tracked_after_apply(self) -> None:
         upgrades = RunUpgradeSystem(rng=random.Random(31))
         self.assertIn("rocket_split", upgrades.tags_for_upgrade("projectile_cap_up"))
+        self.assertEqual(upgrades.tags_for_upgrade("projectile_speed_up"), ("rocket_speed",))
+        self.assertIn("rocket_bounce", upgrades.tags_for_upgrade("ricochet_rounds"))
+        self.assertIn("rocket_sticky", upgrades.tags_for_upgrade("enemy_slow"))
         self.assertIn("sparkler_range", upgrades.tags_for_upgrade("sparkler_range_up"))
+        self.assertIn("sparkler_orbit", upgrades.tags_for_upgrade("sparkler_arc_up"))
+        self.assertEqual(upgrades.tags_for_upgrade("sparkler_arc_up"), ("sparkler_orbit",))
+        self.assertIn("sparkler_persistence", upgrades.tags_for_upgrade("sparkler_duration_up"))
 
         upgrades.apply_choice("projectile_cap_up", active_weapon_id="bottle_rocket")
-        upgrades.apply_choice("sparkler_range_up", active_weapon_id="sparkler")
+        upgrades.apply_choice("ricochet_rounds", active_weapon_id="bottle_rocket")
+        upgrades.apply_choice("enemy_slow")
+        upgrades.apply_choice("sparkler_arc_up", active_weapon_id="sparkler")
+        upgrades.apply_choice("sparkler_duration_up", active_weapon_id="sparkler")
 
         acquired = set(upgrades.acquired_tags())
         self.assertIn("rocket_split", acquired)
-        self.assertIn("sparkler_range", acquired)
+        self.assertIn("rocket_bounce", acquired)
+        self.assertIn("rocket_sticky", acquired)
+        self.assertIn("sparkler_orbit", acquired)
+        self.assertIn("sparkler_persistence", acquired)
         self.assertTrue(upgrades.has_tag("rocket_split"))
-        self.assertTrue(upgrades.has_all_tags(("rocket_split", "sparkler_range")))
+        self.assertTrue(
+            upgrades.has_all_tags(
+                ("rocket_split", "rocket_bounce", "rocket_sticky", "sparkler_orbit", "sparkler_persistence")
+            )
+        )
 
     def test_upgrade_state_tracks_acquired_upgrade_ids(self) -> None:
         upgrades = RunUpgradeSystem(rng=random.Random(37))
@@ -98,11 +119,32 @@ class RunUpgradeSystemValidationTests(unittest.TestCase):
         pool = set(upgrade_tag_pool())
         self.assertIn("rocket_explosion", pool)
         self.assertIn("rocket_split", pool)
+        self.assertIn("rocket_sticky", pool)
+        self.assertIn("rocket_bounce", pool)
         self.assertIn("sparkler_range", pool)
+        self.assertIn("sparkler_orbit", pool)
+        self.assertIn("sparkler_persistence", pool)
         by_tag = upgrade_ids_by_tag()
         self.assertIn("confetti_burst_up", by_tag.get("rocket_explosion", ()))
         self.assertIn("projectile_cap_up", by_tag.get("rocket_split", ()))
-        self.assertEqual(missing_tags_in_upgrade_pool({"rocket_explosion", "sparkler_range"}), ())
+        self.assertIn("enemy_slow", by_tag.get("rocket_sticky", ()))
+        self.assertIn("ricochet_rounds", by_tag.get("rocket_bounce", ()))
+        self.assertIn("sparkler_arc_up", by_tag.get("sparkler_orbit", ()))
+        self.assertIn("sparkler_duration_up", by_tag.get("sparkler_persistence", ()))
+        self.assertEqual(
+            missing_tags_in_upgrade_pool(
+                {
+                    "rocket_explosion",
+                    "rocket_split",
+                    "rocket_sticky",
+                    "rocket_bounce",
+                    "sparkler_range",
+                    "sparkler_orbit",
+                    "sparkler_persistence",
+                }
+            ),
+            (),
+        )
 
     def test_evolution_tagged_options_are_offered_more_often_with_bias(self) -> None:
         draws = 250
@@ -129,7 +171,7 @@ class RunUpgradeSystemValidationTests(unittest.TestCase):
                 for choice in without_bias.generate_choices(
                     count=3,
                     active_weapon_id="bottle_rocket",
-                    evolution_exclude_ids=("burst_rocket", "big_pop_rocket"),
+                    evolution_exclude_ids=("burst_rocket", "big_pop_rocket", "piercing_rocket"),
                 )
             }
             if "projectile_cap_up" in ids:

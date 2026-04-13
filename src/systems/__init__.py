@@ -56,6 +56,15 @@ from .party_animals import (
     register_party_animal,
 )
 from .player_visual import PlayerRenderer
+from .player_visual_anchors import (
+    DEFAULT_PLAYER_WEAPON_ANCHOR,
+    PLAYER_VISUAL_ANCHORS,
+    PlayerVisualAnchorDefinition,
+    get_player_visual_anchor,
+    list_player_visual_anchors,
+    player_render_anchor,
+    resolve_player_visual_anchor,
+)
 from .player_animation import (
     CHARACTER_ANIMATION_CONFIGS,
     DEFAULT_CHARACTER_ANIMATION_ID,
@@ -101,6 +110,31 @@ from .weapon_evolutions import (
     eligible_weapon_evolutions,
     get_weapon_evolution,
     list_weapon_evolutions,
+)
+from .weapon_visual_overlays import (
+    DEFAULT_WEAPON_VISUAL_OVERLAY_OWNER,
+    WeaponVisualOverlay,
+    WeaponVisualOverlayOwner,
+)
+from .weapon_visual_assets import (
+    WEAPON_VISUAL_ASSETS,
+    WeaponVisualAssetDefinition,
+    get_weapon_visual_asset,
+    list_weapon_visual_assets,
+    load_weapon_visual_asset,
+)
+from .weapon_visual_overlay_renderer import WeaponVisualOverlayRenderer
+from .weapon_visuals import (
+    WeaponVisualAnimationProfile,
+    WEAPON_VISUAL_VARIANTS,
+    WEAPON_VISUAL_VARIANT_RULES,
+    WeaponVisualRotationRule,
+    WeaponVisualVariantDefinition,
+    WeaponVisualVariantRule,
+    get_weapon_visual_variant,
+    list_weapon_visual_variants,
+    resolve_weapon_visual_variant_id,
+    weapon_ids_with_visuals,
 )
 
 __all__ = [
@@ -156,6 +190,13 @@ __all__ = [
     "draw_teddy_shape_variant",
     "RuntimeSettings",
     "PlayerRenderer",
+    "PlayerVisualAnchorDefinition",
+    "PLAYER_VISUAL_ANCHORS",
+    "DEFAULT_PLAYER_WEAPON_ANCHOR",
+    "get_player_visual_anchor",
+    "list_player_visual_anchors",
+    "player_render_anchor",
+    "resolve_player_visual_anchor",
     "AnimationClipConfig",
     "CharacterAnimationConfig",
     "LoadedAnimationClip",
@@ -201,4 +242,23 @@ __all__ = [
     "list_weapon_evolutions",
     "get_weapon_evolution",
     "eligible_weapon_evolutions",
+    "WeaponVisualOverlay",
+    "WeaponVisualOverlayOwner",
+    "DEFAULT_WEAPON_VISUAL_OVERLAY_OWNER",
+    "WeaponVisualAssetDefinition",
+    "WEAPON_VISUAL_ASSETS",
+    "get_weapon_visual_asset",
+    "list_weapon_visual_assets",
+    "load_weapon_visual_asset",
+    "WeaponVisualOverlayRenderer",
+    "WeaponVisualAnimationProfile",
+    "WeaponVisualRotationRule",
+    "WeaponVisualVariantDefinition",
+    "WeaponVisualVariantRule",
+    "WEAPON_VISUAL_VARIANTS",
+    "WEAPON_VISUAL_VARIANT_RULES",
+    "get_weapon_visual_variant",
+    "list_weapon_visual_variants",
+    "resolve_weapon_visual_variant_id",
+    "weapon_ids_with_visuals",
 ]

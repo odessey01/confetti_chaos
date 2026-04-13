@@ -20,6 +20,22 @@ class UiRenderer:
         self._body_font = pygame.font.Font(None, 34)
         self._health_icon_cache: dict[str, pygame.Surface | None] = {}
 
+    @staticmethod
+    def _stack_centered_rects(
+        surfaces: list[pygame.Surface],
+        *,
+        center_x: int,
+        start_y: int,
+        spacing: int,
+    ) -> list[pygame.Rect]:
+        rects: list[pygame.Rect] = []
+        current_y = int(start_y)
+        for item in surfaces:
+            rect = item.get_rect(center=(center_x, current_y + (item.get_height() // 2)))
+            rects.append(rect)
+            current_y = rect.bottom + int(spacing)
+        return rects
+
     def draw_score(self, surface: pygame.Surface, score_value: int) -> None:
         score_surface = self._score_font.render(f"Score: {score_value}", True, self._score_color)
         surface.blit(score_surface, (20, 20))
@@ -173,6 +189,124 @@ class UiRenderer:
         label_rect = label.get_rect(center=banner_rect.center)
         surface.blit(label, label_rect)
 
+    def menu_layout_rects(
+        self,
+        surface: pygame.Surface,
+        *,
+        title: str,
+        high_score: int,
+        options: tuple[str, ...],
+        music_enabled: bool,
+        aim_assist_enabled: bool,
+        selected_start_level: int,
+        selected_weapon_name: str | None = None,
+    ) -> dict[str, pygame.Rect | list[pygame.Rect]]:
+        center_x = surface.get_width() // 2
+        title_surface = self._title_font.render(title, True, self._title_color)
+        option_surfaces: list[pygame.Surface] = []
+        for option in options:
+            label = option
+            if option == "Toggle Sound":
+                label = f"Toggle Sound: {'On' if music_enabled else 'Off'}"
+            elif option == "Toggle Aim Assist":
+                label = f"Toggle Aim Assist: {'On' if aim_assist_enabled else 'Off'}"
+            elif option == "Level Select":
+                label = f"Level Select: {selected_start_level}"
+            option_surfaces.append(self._prompt_font.render(label, True, self._prompt_color))
+
+        high_score_surface = self._prompt_font.render(
+            f"High Score: {high_score}",
+            True,
+            self._prompt_color,
+        )
+        prompt_surface = self._prompt_font.render(
+            "Up/Down to Navigate | Enter/A to Confirm",
+            True,
+            self._prompt_color,
+        )
+        title_rect = title_surface.get_rect(midtop=(center_x, 48))
+        prompt_rect = prompt_surface.get_rect(midbottom=(center_x, surface.get_height() - 28))
+        high_score_rect = high_score_surface.get_rect(midbottom=(center_x, prompt_rect.top - 18))
+        weapon_surface = (
+            self._body_font.render(f"Weapon: {selected_weapon_name}", True, (255, 228, 150))
+            if selected_weapon_name
+            else None
+        )
+        weapon_rect: pygame.Rect | None = None
+        if weapon_surface is not None:
+            weapon_rect = weapon_surface.get_rect(midbottom=(center_x, high_score_rect.top - 12))
+
+        available_top = title_rect.bottom + 34
+        available_bottom = (weapon_rect.top - 16) if weapon_rect is not None else (high_score_rect.top - 26)
+        option_spacing = 14
+        option_total_height = sum(item.get_height() for item in option_surfaces)
+        if len(option_surfaces) > 1:
+            option_total_height += option_spacing * (len(option_surfaces) - 1)
+        options_start_y = available_top
+        if available_bottom > available_top and option_total_height < (available_bottom - available_top):
+            options_start_y = available_top + ((available_bottom - available_top - option_total_height) // 2)
+        option_rects = self._stack_centered_rects(
+            option_surfaces,
+            center_x=center_x,
+            start_y=options_start_y,
+            spacing=option_spacing,
+        )
+        result: dict[str, pygame.Rect | list[pygame.Rect]] = {
+            "title": title_rect,
+            "options": option_rects,
+            "high_score": high_score_rect,
+            "prompt": prompt_rect,
+        }
+        if weapon_rect is not None:
+            result["weapon"] = weapon_rect
+        return result
+
+    def paused_layout_rects(
+        self,
+        surface: pygame.Surface,
+        *,
+        audio_enabled: bool,
+        aim_assist_enabled: bool,
+        options: tuple[str, ...],
+    ) -> dict[str, pygame.Rect | list[pygame.Rect]]:
+        center_x = surface.get_width() // 2
+        pause_surface = self._state_font.render("PAUSED", True, self._state_color)
+        option_surfaces: list[pygame.Surface] = []
+        for option in options:
+            label = option
+            if option == "Toggle Sound":
+                label = f"Toggle Sound: {'On' if audio_enabled else 'Off'}"
+            elif option == "Toggle Aim Assist":
+                label = f"Toggle Aim Assist: {'On' if aim_assist_enabled else 'Off'}"
+            option_surfaces.append(self._prompt_font.render(label, True, self._prompt_color))
+        prompt_surface = self._prompt_font.render(
+            "Up/Down to Navigate | Enter/A to Confirm | P/Esc to Resume",
+            True,
+            self._prompt_color,
+        )
+        pause_rect = pause_surface.get_rect(midtop=(center_x, 120))
+        prompt_rect = prompt_surface.get_rect(midbottom=(center_x, surface.get_height() - 34))
+        available_top = pause_rect.bottom + 28
+        available_bottom = prompt_rect.top - 26
+        option_spacing = 14
+        option_total_height = sum(item.get_height() for item in option_surfaces)
+        if len(option_surfaces) > 1:
+            option_total_height += option_spacing * (len(option_surfaces) - 1)
+        options_start_y = available_top
+        if available_bottom > available_top and option_total_height < (available_bottom - available_top):
+            options_start_y = available_top + ((available_bottom - available_top - option_total_height) // 2)
+        option_rects = self._stack_centered_rects(
+            option_surfaces,
+            center_x=center_x,
+            start_y=options_start_y,
+            spacing=option_spacing,
+        )
+        return {
+            "title": pause_rect,
+            "options": option_rects,
+            "prompt": prompt_rect,
+        }
+
     def draw_menu(
         self,
         surface: pygame.Surface,
@@ -183,14 +317,10 @@ class UiRenderer:
         music_enabled: bool,
         aim_assist_enabled: bool,
         selected_start_level: int,
+        selected_weapon_name: str | None = None,
     ) -> None:
-        center_x = surface.get_width() // 2
-        center_y = surface.get_height() // 2
-
         title_surface = self._title_font.render(title, True, self._title_color)
-        title_rect = title_surface.get_rect(center=(center_x, center_y - 120))
-        surface.blit(title_surface, title_rect)
-
+        option_surfaces: list[pygame.Surface] = []
         for idx, option in enumerate(options):
             label = option
             if option == "Toggle Sound":
@@ -200,24 +330,45 @@ class UiRenderer:
             elif option == "Level Select":
                 label = f"Level Select: {selected_start_level}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
-            option_surface = self._prompt_font.render(label, True, color)
-            option_rect = option_surface.get_rect(center=(center_x, center_y - 25 + (idx * 40)))
-            surface.blit(option_surface, option_rect)
+            option_surfaces.append(self._prompt_font.render(label, True, color))
 
         high_score_surface = self._prompt_font.render(
             f"High Score: {high_score}",
             True,
             self._prompt_color,
         )
-        high_score_rect = high_score_surface.get_rect(center=(center_x, center_y + 150))
-        surface.blit(high_score_surface, high_score_rect)
-
         prompt_surface = self._prompt_font.render(
             "Up/Down to Navigate | Enter/A to Confirm",
             True,
             self._prompt_color,
         )
-        prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 195))
+        weapon_surface = (
+            self._body_font.render(f"Weapon: {selected_weapon_name}", True, (255, 228, 150))
+            if selected_weapon_name
+            else None
+        )
+
+        layout = self.menu_layout_rects(
+            surface,
+            title=title,
+            high_score=high_score,
+            options=options,
+            music_enabled=music_enabled,
+            aim_assist_enabled=aim_assist_enabled,
+            selected_start_level=selected_start_level,
+            selected_weapon_name=selected_weapon_name,
+        )
+        title_rect = layout["title"]
+        high_score_rect = layout["high_score"]
+        prompt_rect = layout["prompt"]
+        option_rects = layout["options"]
+
+        surface.blit(title_surface, title_rect)
+        for option_surface, option_rect in zip(option_surfaces, option_rects):
+            surface.blit(option_surface, option_rect)
+        if weapon_surface is not None and "weapon" in layout:
+            surface.blit(weapon_surface, layout["weapon"])
+        surface.blit(high_score_surface, high_score_rect)
         surface.blit(prompt_surface, prompt_rect)
 
     def draw_player_select(
@@ -319,12 +470,8 @@ class UiRenderer:
         overlay.fill((0, 0, 0, 110))
         surface.blit(overlay, (0, 0))
 
-        center_x = surface.get_width() // 2
-        center_y = surface.get_height() // 2
         pause_surface = self._state_font.render("PAUSED", True, self._state_color)
-        pause_rect = pause_surface.get_rect(center=(center_x, center_y - 120))
-        surface.blit(pause_surface, pause_rect)
-
+        option_surfaces: list[pygame.Surface] = []
         for idx, option in enumerate(options):
             label = option
             if option == "Toggle Sound":
@@ -332,13 +479,22 @@ class UiRenderer:
             elif option == "Toggle Aim Assist":
                 label = f"Toggle Aim Assist: {'On' if aim_assist_enabled else 'Off'}"
             color = (255, 235, 140) if idx == selected_index else self._prompt_color
-            option_surface = self._prompt_font.render(label, True, color)
-            option_rect = option_surface.get_rect(center=(center_x, center_y - 30 + (idx * 40)))
-            surface.blit(option_surface, option_rect)
+            option_surfaces.append(self._prompt_font.render(label, True, color))
 
         prompt = "Up/Down to Navigate | Enter/A to Confirm | P/Esc to Resume"
         prompt_surface = self._prompt_font.render(prompt, True, self._prompt_color)
-        prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 150))
+        layout = self.paused_layout_rects(
+            surface,
+            audio_enabled=audio_enabled,
+            aim_assist_enabled=aim_assist_enabled,
+            options=options,
+        )
+        pause_rect = layout["title"]
+        prompt_rect = layout["prompt"]
+        option_rects = layout["options"]
+        surface.blit(pause_surface, pause_rect)
+        for option_surface, option_rect in zip(option_surfaces, option_rects):
+            surface.blit(option_surface, option_rect)
         surface.blit(prompt_surface, prompt_rect)
 
     def draw_level_up_overlay(

@@ -91,7 +91,7 @@ class PlayerAnimationSystemValidationTests(unittest.TestCase):
     def test_animation_system_advances_frames_for_active_state(self) -> None:
         system = PlayerAnimationSystem(configs=self.configs, loader=_stub_loader)
         system.set_character("teddy_f")
-        system.update(0.30, moving=True, facing=pygame.Vector2(1.0, 0.0))
+        system.update(0.20, moving=True, facing=pygame.Vector2(1.0, 0.0))
         snap = system.snapshot()
         self.assertEqual(snap["state"], "walk")
         self.assertGreaterEqual(int(snap["frame_index"]), 1)
@@ -261,6 +261,38 @@ class PlayerAnimationSystemValidationTests(unittest.TestCase):
 
         self.assertEqual(idle_rect.midbottom, walk_rect.midbottom)
 
+    def test_bunny_animation_display_rect_is_half_scale_without_hitbox_change(self) -> None:
+        clip = AnimationClipConfig(sheet_path="images/player/bear/bear_idle.png", rows=1, columns=1, fps=4.0)
+        configs = {
+            "teddy_f": CharacterAnimationConfig(
+                character_id="teddy_f",
+                idle=clip,
+                walk=clip,
+                base_display_scale=0.475,
+            ),
+            "bunny_f": CharacterAnimationConfig(
+                character_id="bunny_f",
+                idle=clip,
+                walk=clip,
+                base_display_scale=0.2375,
+            ),
+        }
+        player_rect = pygame.Rect(100, 120, 80, 80)
+
+        teddy = PlayerAnimationSystem(configs=configs, loader=_stub_loader)
+        teddy.set_character("teddy_f")
+        teddy_rect = teddy.frame_rect_for_player(player_rect)
+        assert teddy_rect is not None
+
+        bunny = PlayerAnimationSystem(configs=configs, loader=_stub_loader)
+        bunny.set_character("bunny_f")
+        bunny_rect = bunny.frame_rect_for_player(player_rect)
+        assert bunny_rect is not None
+
+        self.assertEqual(bunny_rect.midbottom, teddy_rect.midbottom)
+        self.assertEqual(bunny_rect.width, teddy_rect.width // 2)
+        self.assertEqual(bunny_rect.height, teddy_rect.height // 2)
+
     def test_gameplay_hitbox_remains_stable_while_animation_state_changes(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
         session.player.position.update(250.0, 240.0)
@@ -274,6 +306,15 @@ class PlayerAnimationSystemValidationTests(unittest.TestCase):
 
         self.assertEqual(idle_hitbox.size, walk_hitbox.size)
         self.assertEqual(walk_hitbox.size, post_walk_hitbox.size)
+
+    def test_bunny_render_scale_does_not_change_collision_rect(self) -> None:
+        teddy_session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        teddy_session.start_new_run(player_animal_id="teddy_f")
+        bunny_session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        bunny_session.start_new_run(player_animal_id="bunny_f")
+
+        self.assertEqual(teddy_session.player.rect.size, bunny_session.player.rect.size)
+        self.assertEqual(teddy_session.player_collision_rect().size, bunny_session.player_collision_rect().size)
 
     def test_directional_flip_metadata_tracks_left_and_right_facing(self) -> None:
         system = PlayerAnimationSystem(configs=self.configs, loader=_stub_loader)
@@ -306,11 +347,11 @@ class PlayerAnimationSystemValidationTests(unittest.TestCase):
         system = PlayerAnimationSystem(configs=tuned, loader=_fps_driven_loader)
         system.set_character("teddy_f")
 
-        system.update(0.4, moving=False, facing=pygame.Vector2(1.0, 0.0))
+        system.update(0.2, moving=False, facing=pygame.Vector2(1.0, 0.0))
         idle_index = int(system.snapshot()["frame_index"])
 
         system.reset()
-        system.update(0.4, moving=True, facing=pygame.Vector2(1.0, 0.0))
+        system.update(0.2, moving=True, facing=pygame.Vector2(1.0, 0.0))
         walk_index = int(system.snapshot()["frame_index"])
 
         self.assertGreater(walk_index, idle_index)

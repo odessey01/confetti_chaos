@@ -12,6 +12,8 @@ class WeaponEvolutionDefinition:
     required_tags: tuple[str, ...]
     result_form_id: str
     description: str
+    # TODO: Wire runtime weapon-level checks into evolution eligibility when weapon levels exist.
+    required_weapon_level: int | None = None
 
 
 WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
@@ -21,6 +23,7 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         required_tags=("rocket_explosion", "rocket_split"),
         result_form_id="burst_rocket",
         description="Bottle Rocket splits into burst fragments.",
+        required_weapon_level=3,
     ),
     WeaponEvolutionDefinition(
         evolution_id="big_pop_rocket",
@@ -28,6 +31,39 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         required_tags=("rocket_explosion", "rocket_power"),
         result_form_id="big_pop_rocket",
         description="Bottle Rocket gains larger explosion impact.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="delayed_blast_rocket",
+        weapon_id="bottle_rocket",
+        required_tags=("rocket_explosion", "rocket_sticky"),
+        result_form_id="delayed_blast_rocket",
+        description="Bottle Rocket sticks and detonates after a short delay.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="pinball_rocket",
+        weapon_id="bottle_rocket",
+        required_tags=("rocket_bounce", "rocket_speed"),
+        result_form_id="pinball_rocket",
+        description="Bottle Rocket ricochets toward another target on impact.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="chain_rocket",
+        weapon_id="bottle_rocket",
+        required_tags=("rocket_speed", "rocket_power"),
+        result_form_id="chain_rocket",
+        description="Bottle Rocket retargets forward through nearby enemies in a chain.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="piercing_rocket",
+        weapon_id="bottle_rocket",
+        required_tags=("rocket_speed", "rocket_split"),
+        result_form_id="piercing_rocket",
+        description="Bottle Rocket pierces through targets for line-clear pressure.",
+        required_weapon_level=3,
     ),
     WeaponEvolutionDefinition(
         evolution_id="wide_arc_sparkler",
@@ -35,6 +71,15 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         required_tags=("sparkler_range", "sparkler_speed"),
         result_form_id="wide_arc_sparkler",
         description="Sparkler swings in a wider arc.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="orbiting_sparklers",
+        weapon_id="sparkler",
+        required_tags=("sparkler_orbit", "sparkler_speed"),
+        result_form_id="orbiting_sparklers",
+        description="Sparkler spawns orbiting sparks around the player.",
+        required_weapon_level=3,
     ),
     WeaponEvolutionDefinition(
         evolution_id="spark_aura",
@@ -42,10 +87,28 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         required_tags=("sparkler_range", "sparkler_persistence"),
         result_form_id="spark_aura",
         description="Sparkler transforms into a periodic spark aura.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="flare_whip",
+        weapon_id="sparkler",
+        required_tags=("sparkler_orbit", "sparkler_range"),
+        result_form_id="flare_whip",
+        description="Sparkler lashes in wide sweeping control arcs.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="ember_ring",
+        weapon_id="sparkler",
+        required_tags=("sparkler_persistence", "sparkler_speed"),
+        result_form_id="ember_ring",
+        description="Sparkler emits a pulsing ember ring around the player.",
+        required_weapon_level=3,
     ),
 )
 
 _EVOLUTION_BY_ID = {definition.evolution_id: definition for definition in WEAPON_EVOLUTION_DEFINITIONS}
+COMPATIBLE_MULTI_EVOLUTION_WEAPONS: frozenset[str] = frozenset({"bottle_rocket"})
 
 
 def list_weapon_evolutions() -> tuple[WeaponEvolutionDefinition, ...]:
@@ -96,10 +159,12 @@ class WeaponEvolutionTracker:
 
     def __init__(self) -> None:
         self._triggered: set[str] = set()
+        self._triggered_weapons: set[str] = set()
         self._pending: list[WeaponEvolutionDefinition] = []
 
     def reset(self) -> None:
         self._triggered.clear()
+        self._triggered_weapons.clear()
         self._pending.clear()
 
     def check_for_new(
@@ -108,8 +173,14 @@ class WeaponEvolutionTracker:
         weapon_id: str,
         acquired_tags: tuple[str, ...] | list[str] | set[str],
     ) -> list[WeaponEvolutionDefinition]:
+        resolved_weapon_id = str(weapon_id)
+        if (
+            resolved_weapon_id in self._triggered_weapons
+            and resolved_weapon_id not in COMPATIBLE_MULTI_EVOLUTION_WEAPONS
+        ):
+            return []
         newly_eligible = eligible_weapon_evolutions(
-            weapon_id=weapon_id,
+            weapon_id=resolved_weapon_id,
             acquired_tags=acquired_tags,
             exclude_evolution_ids=tuple(self._triggered),
         )
@@ -117,6 +188,7 @@ class WeaponEvolutionTracker:
             newly_eligible = [newly_eligible[0]]
         for definition in newly_eligible:
             self._triggered.add(definition.evolution_id)
+            self._triggered_weapons.add(definition.weapon_id)
             self._pending.append(definition)
         return list(newly_eligible)
 
@@ -127,6 +199,9 @@ class WeaponEvolutionTracker:
 
     def has_triggered(self, evolution_id: str) -> bool:
         return str(evolution_id) in self._triggered
+
+    def has_triggered_weapon(self, weapon_id: str) -> bool:
+        return str(weapon_id) in self._triggered_weapons
 
     def triggered_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._triggered))

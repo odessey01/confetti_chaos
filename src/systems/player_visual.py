@@ -12,6 +12,10 @@ from .party_animals import draw_party_animal_shape, get_party_animal
 class PlayerRenderer:
     """Draw the player using gameplay state exposed by Player."""
 
+    VISUAL_SCALE_BY_VARIANT: dict[str, float] = {
+        "bunny_f": 0.5,
+    }
+
     def __init__(self) -> None:
         self._sprite_cache: dict[str, pygame.Surface | None] = {}
 
@@ -25,10 +29,12 @@ class PlayerRenderer:
         animation_flip_x: bool = False,
         show_shadow: bool = True,
         show_outline: bool = True,
+        show_direction_indicator: bool = True,
     ) -> str:
         if getattr(player, "is_invulnerable", False):
             if (pygame.time.get_ticks() // 70) % 2 == 0:
-                self._draw_direction_indicator(surface, player)
+                if show_direction_indicator:
+                    self._draw_direction_indicator(surface, player)
                 return "shape"
         if animation_frame is not None and animation_rect is not None:
             self._draw_animation_frame(
@@ -37,13 +43,15 @@ class PlayerRenderer:
                 animation_rect,
                 flip_x=animation_flip_x,
             )
-            self._draw_direction_indicator(surface, player)
+            if show_direction_indicator:
+                self._draw_direction_indicator(surface, player)
             return "animated"
         variant = self._variant_for_player(player)
         sprite = self._sprite_for_variant(variant.sprite_asset_path) if variant.prefers_sprite else None
         if sprite is not None:
             self._draw_sprite(surface, player, sprite)
-            self._draw_direction_indicator(surface, player)
+            if show_direction_indicator:
+                self._draw_direction_indicator(surface, player)
             return "sprite"
         draw_party_animal_shape(
             surface,
@@ -52,7 +60,8 @@ class PlayerRenderer:
             show_outline=show_outline,
             show_shadow=show_shadow,
         )
-        self._draw_direction_indicator(surface, player)
+        if show_direction_indicator:
+            self._draw_direction_indicator(surface, player)
         return "shape"
 
     def _variant_for_player(self, player: Player):
@@ -60,7 +69,7 @@ class PlayerRenderer:
         return get_party_animal(variant_id)
 
     def _draw_sprite(self, surface: pygame.Surface, player: Player, sprite: pygame.Surface) -> None:
-        target_size = max(8, int(player.size))
+        target_size = max(8, int(round(float(player.size) * self._visual_scale_for_player(player))))
         scaled = pygame.transform.smoothscale(sprite, (target_size, target_size))
         draw_rect = scaled.get_rect(center=player.rect.center)
         surface.blit(scaled, draw_rect)
@@ -76,6 +85,10 @@ class PlayerRenderer:
         source = pygame.transform.flip(frame, True, False) if flip_x else frame
         scaled = pygame.transform.smoothscale(source, target_rect.size)
         surface.blit(scaled, target_rect)
+
+    def _visual_scale_for_player(self, player: Player) -> float:
+        variant_id = str(getattr(player, "visual_variant_id", "teddy_f"))
+        return max(0.1, float(self.VISUAL_SCALE_BY_VARIANT.get(variant_id, 1.0)))
 
     def _sprite_for_variant(self, sprite_asset_path: str | None) -> pygame.Surface | None:
         if not sprite_asset_path:

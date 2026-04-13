@@ -243,6 +243,55 @@ def execute_start_menu_action(
     return state, True
 
 
+def draw_player_weapon_preview(
+    surface: pygame.Surface,
+    session: GameSession,
+    *,
+    variant_id: str,
+    weapon_id: str,
+    preview_size: int,
+    preview_x: float,
+    preview_y: float,
+    delta_seconds: float,
+) -> None:
+    original_size = int(session.player.size)
+    session.set_active_weapon(weapon_id)
+    session.player.position.update(preview_x, preview_y)
+    session.player.size = int(preview_size)
+    session.player.visual_variant_id = str(variant_id)
+    session.player.facing = pygame.Vector2(1.0, 0.0)
+    session.player._movement_intensity = 0.25
+    session.player._movement_juice = 0.1
+    session.player._movement_phase += delta_seconds * 4.0
+    session.player_animation.set_character(str(variant_id))
+    session.player_animation.update(
+        delta_seconds,
+        moving=False,
+        facing=pygame.Vector2(1.0, 0.0),
+    )
+    preview_frame = session.player_animation.current_frame()
+    preview_rect = session.player_animation.frame_rect_for_player(session.player.rect)
+    if preview_frame is not None and str(variant_id) == "teddy_f":
+        preview_rect = preview_frame.get_rect()
+        preview_rect.midbottom = session.player.rect.midbottom
+    overlays = session.active_weapon_visual_overlays()
+    for overlay in overlays:
+        if overlay.z_index < 0:
+            session.weapon_overlay_renderer.draw_overlay(surface, session.player, overlay)
+    session.player_renderer.draw(
+        surface,
+        session.player,
+        animation_frame=preview_frame,
+        animation_rect=preview_rect,
+        animation_flip_x=session.player_animation.should_flip_horizontal(),
+        show_direction_indicator=(len(overlays) == 0),
+    )
+    for overlay in overlays:
+        if overlay.z_index >= 0:
+            session.weapon_overlay_renderer.draw_overlay(surface, session.player, overlay)
+    session.player.size = original_size
+
+
 def main() -> int:
     assets_dir().mkdir(parents=True, exist_ok=True)
     saves_dir()
@@ -591,6 +640,21 @@ def main() -> int:
         background.draw(world_surface, player_center=player_center)
 
         if state == GameState.MENU:
+            selected_key = player_select_ids[player_select_index] if player_select_ids else "teddy_f"
+            selected_variant_id = get_party_animal(selected_key).variant_id
+            menu_preview_size = 128
+            menu_preview_x = (WINDOW_WIDTH - menu_preview_size) / 2
+            menu_preview_y = 150
+            draw_player_weapon_preview(
+                world_surface,
+                session,
+                variant_id=selected_variant_id,
+                weapon_id=selected_weapon_id,
+                preview_size=menu_preview_size,
+                preview_x=menu_preview_x,
+                preview_y=menu_preview_y,
+                delta_seconds=delta_seconds,
+            )
             ui.draw_menu(
                 world_surface,
                 WINDOW_TITLE,
@@ -600,6 +664,7 @@ def main() -> int:
                 runtime_settings.music_enabled,
                 runtime_settings.aim_assist_enabled,
                 runtime_settings.selected_start_level,
+                get_weapon_definition(selected_weapon_id).display_name,
             )
         elif state == GameState.PLAYER_SELECT:
             selected_key = player_select_ids[player_select_index] if player_select_ids else "teddy_f"
@@ -608,31 +673,16 @@ def main() -> int:
             preview_size = 140
             preview_x = (WINDOW_WIDTH - preview_size) / 2
             preview_y = 180
-            session.player.position.update(preview_x, preview_y)
-            session.player.size = preview_size
-            session.player.visual_variant_id = selected_variant_id
-            session.player._movement_intensity = 0.25
-            session.player._movement_juice = 0.1
-            session.player._movement_phase += delta_seconds * 4.0
-            session.player_animation.set_character(selected_variant_id)
-            session.player_animation.update(
-                delta_seconds,
-                moving=False,
-                facing=pygame.Vector2(1.0, 0.0),
-            )
-            preview_frame = session.player_animation.current_frame()
-            preview_rect = session.player_animation.frame_rect_for_player(session.player.rect)
-            if preview_frame is not None and selected_variant_id == "teddy_f":
-                preview_rect = preview_frame.get_rect()
-                preview_rect.midbottom = session.player.rect.midbottom
-            session.player_renderer.draw(
+            draw_player_weapon_preview(
                 world_surface,
-                session.player,
-                animation_frame=preview_frame,
-                animation_rect=preview_rect,
-                animation_flip_x=session.player_animation.should_flip_horizontal(),
+                session,
+                variant_id=selected_variant_id,
+                weapon_id=selected_weapon_id,
+                preview_size=preview_size,
+                preview_x=preview_x,
+                preview_y=preview_y,
+                delta_seconds=delta_seconds,
             )
-            session.player.size = 80
             selected_note = PLAYER_SELECT_NOTES.get(selected_variant_id, "")
             passive = get_character_passive(selected_variant_id)
             selected_is_locked = not player_select_enabled[player_select_index]
