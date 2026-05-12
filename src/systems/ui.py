@@ -40,6 +40,18 @@ class UiRenderer:
         score_surface = self._score_font.render(f"Score: {score_value}", True, self._score_color)
         surface.blit(score_surface, (20, 20))
 
+    def draw_timer(self, surface: pygame.Surface, elapsed_seconds: float) -> None:
+        total_seconds = max(0, int(elapsed_seconds))
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        if hours > 0:
+            timer_text = f"Time: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        else:
+            timer_text = f"Time: {minutes:02d}:{seconds:02d}"
+        timer_surface = self._body_font.render(timer_text, True, (232, 238, 246))
+        surface.blit(timer_surface, (20, 54))
+
     def draw_level(self, surface: pygame.Surface, level: int) -> None:
         level_surface = self._score_font.render(f"Level: {level}", True, self._score_color)
         level_rect = level_surface.get_rect(topright=(surface.get_width() - 20, 20))
@@ -168,6 +180,61 @@ class UiRenderer:
         bonus_surface = self._state_font.render(f"+{bonus} Bonus", True, self._score_color)
         bonus_rect = bonus_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 30))
         surface.blit(bonus_surface, bonus_rect)
+
+    def draw_demo_complete(
+        self,
+        surface: pygame.Surface,
+        *,
+        score_value: int,
+        high_score: int,
+        boss_level: int,
+    ) -> None:
+        center_x = surface.get_width() // 2
+        center_y = surface.get_height() // 2
+
+        title_surface = self._title_font.render("DEMO COMPLETE", True, (255, 226, 128))
+        title_rect = title_surface.get_rect(center=(center_x, center_y - 132))
+        surface.blit(title_surface, title_rect)
+
+        boss_surface = self._state_font.render(
+            f"Defeated the Level {boss_level} Boss!",
+            True,
+            self._state_color,
+        )
+        boss_rect = boss_surface.get_rect(center=(center_x, center_y - 64))
+        surface.blit(boss_surface, boss_rect)
+
+        thanks_surface = self._prompt_font.render(
+            "Thanks for playing Confetti Chaos!",
+            True,
+            (232, 242, 255),
+        )
+        thanks_rect = thanks_surface.get_rect(center=(center_x, center_y - 8))
+        surface.blit(thanks_surface, thanks_rect)
+
+        cta_surface = self._body_font.render(
+            "Purchase the full game for more fun confetti chaos!",
+            True,
+            (255, 236, 176),
+        )
+        cta_rect = cta_surface.get_rect(center=(center_x, center_y + 34))
+        surface.blit(cta_surface, cta_rect)
+
+        score_surface = self._prompt_font.render(
+            f"Score {score_value} | High Score {high_score}",
+            True,
+            self._prompt_color,
+        )
+        score_rect = score_surface.get_rect(center=(center_x, center_y + 88))
+        surface.blit(score_surface, score_rect)
+
+        prompt_surface = self._body_font.render(
+            "Press R or Space to Restart",
+            True,
+            self._prompt_color,
+        )
+        prompt_rect = prompt_surface.get_rect(center=(center_x, center_y + 126))
+        surface.blit(prompt_surface, prompt_rect)
 
     def draw_state_text(self, surface: pygame.Surface, text: str, alpha: float = 1.0) -> None:
         text_surface = self._state_font.render(text, True, self._state_color)

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Callable
+import os
+import sys
+from typing import Callable, Sequence
 
 import pygame
 
@@ -32,6 +34,7 @@ from systems import (
     save_high_score,
     save_meta_progression,
     save_settings,
+    runtime_root,
     saves_dir,
 )
 
@@ -44,6 +47,8 @@ HAZARD_COUNT = 1
 LEVEL_UP_CONFIRM_DELAY_SECONDS = 0.35
 LEVEL_UP_EXIT_INVULNERABILITY_SECONDS = 1.0
 UNLOCK_NOTIFICATION_SECONDS = 3.0
+DEMO_MODE_FLAG_RELATIVE_PATH = ("build_flags", "demo_mode.flag")
+DEMO_MODE_BOSS_TARGET_LEVEL = 10
 START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Toggle Aim Assist", "Quit")
 PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Toggle Aim Assist", "Quit to Menu")
 PLAYER_SELECT_NOTES = {
@@ -116,6 +121,38 @@ def pause_menu_action_for_index(index: int) -> PauseMenuAction:
 
 def should_update_playing(state: GameState) -> bool:
     return state == GameState.PLAYING
+
+
+def is_demo_mode_enabled() -> bool:
+    return runtime_root().joinpath(*DEMO_MODE_FLAG_RELATIVE_PATH).exists()
+
+
+def _is_truthy_env_value(raw_value: str) -> bool:
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def demo_mode_enabled_from_runtime(
+    *,
+    argv: Sequence[str],
+    env: dict[str, str] | None = None,
+) -> bool:
+    args = tuple(str(item).strip().lower() for item in argv)
+    if "--demo-mode" in args:
+        return True
+    resolved_env = env if env is not None else dict(os.environ)
+    raw_env = resolved_env.get("CONFETTI_CHAOS_DEMO_MODE")
+    if raw_env is not None and _is_truthy_env_value(raw_env):
+        return True
+    return is_demo_mode_enabled()
+
+
+def should_end_demo_run_after_boss_defeat(
+    *,
+    demo_mode_enabled: bool,
+    current_level: int,
+    boss_defeat_triggered: bool,
+) -> bool:
+    return bool(demo_mode_enabled and boss_defeat_triggered and int(current_level) >= DEMO_MODE_BOSS_TARGET_LEVEL)
 
 
 def next_choice_index(current_index: int, direction: int, option_count: int) -> int:
@@ -292,7 +329,8 @@ def draw_player_weapon_preview(
     session.player.size = original_size
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    resolved_argv = tuple(sys.argv[1:] if argv is None else argv)
     assets_dir().mkdir(parents=True, exist_ok=True)
     saves_dir()
     high_score = load_high_score()
@@ -317,6 +355,7 @@ def main() -> int:
     ui = UiRenderer()
     visual_feedback = VisualFeedback()
     background = BackgroundRenderer((WINDOW_WIDTH, WINDOW_HEIGHT))
+    demo_mode_enabled = demo_mode_enabled_from_runtime(argv=resolved_argv)
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
     all_player_select_ids: tuple[str, ...] = (
@@ -354,6 +393,7 @@ def main() -> int:
     level_up_input_lock_timer = 0.0
     show_player_debug = False
     current_run_boss_defeats = 0
+    game_over_demo_complete = False
     unlock_notification_timer = 0.0
     unlock_notification_text = ""
     running = True
@@ -434,6 +474,7 @@ def main() -> int:
                         weapon_id=selected_weapon_id,
                     )
                     current_run_boss_defeats = 0
+                    game_over_demo_complete = False
                     audio.play_start_or_restart()
                     audio.play_sfx("ui_confirm")
                     visual_feedback.trigger_state_transition()
@@ -455,6 +496,7 @@ def main() -> int:
                     audio.play_sfx(ui_sfx_for_pause_action(action))
                     if action in (PauseMenuAction.RESTART, PauseMenuAction.QUIT_TO_MENU):
                         current_run_boss_defeats = 0
+                        game_over_demo_complete = False
                     state = execute_pause_menu_action(
                         action,
                         state=state,
@@ -505,6 +547,7 @@ def main() -> int:
                     state = transition_state(state, GameState.PLAYING)
                     session.start_new_run(start_level=runtime_settings.selected_start_level)
                     current_run_boss_defeats = 0
+                    game_over_demo_complete = False
                     audio.play_start_or_restart()
                     visual_feedback.trigger_state_transition()
 
@@ -570,6 +613,7 @@ def main() -> int:
                     player_select_enabled = tuple(True for _ in player_select_ids)
                     player_select_index = max(0, min(player_select_index, len(player_select_ids) - 1))
                 save_meta_progression(meta_progression)
+                game_over_demo_complete = False
                 state = transition_state(state, GameState.GAME_OVER)
                 visual_feedback.trigger_state_transition()
 
@@ -587,6 +631,14 @@ def main() -> int:
             if audio_cues["boss_defeat"]:
                 audio.play_sfx("boss_defeat")
                 current_run_boss_defeats += 1
+                if should_end_demo_run_after_boss_defeat(
+                    demo_mode_enabled=demo_mode_enabled,
+                    current_level=session.current_level,
+                    boss_defeat_triggered=True,
+                ):
+                    game_over_demo_complete = True
+                    state = transition_state(state, GameState.GAME_OVER)
+                    visual_feedback.trigger_state_transition()
             if audio_cues["boss_phase_change"]:
                 audio.play_sfx("milestone_clear")
             if audio_cues["milestone_clear"]:
@@ -714,6 +766,7 @@ def main() -> int:
         elif state == GameState.PLAYING:
             session.draw_playing(world_surface)
             ui.draw_score(world_surface, session.score_value)
+            ui.draw_timer(world_surface, session.elapsed_time)
             ui.draw_health(
                 world_surface,
                 current_health=session.player.current_health,
@@ -758,6 +811,7 @@ def main() -> int:
         elif state == GameState.PAUSED:
             session.draw_playing(world_surface)
             ui.draw_score(world_surface, session.score_value)
+            ui.draw_timer(world_surface, session.elapsed_time)
             ui.draw_health(
                 world_surface,
                 current_health=session.player.current_health,
@@ -801,6 +855,7 @@ def main() -> int:
         elif state == GameState.LEVEL_UP:
             session.draw_playing(world_surface)
             ui.draw_score(world_surface, session.score_value)
+            ui.draw_timer(world_surface, session.elapsed_time)
             ui.draw_health(
                 world_surface,
                 current_health=session.player.current_health,
@@ -841,11 +896,19 @@ def main() -> int:
                 selected_index=level_up_choice_index,
             )
         else:
-            label = (
-                f"GAME OVER: Score {session.score_value} | High Score {high_score} "
-                "- Press R or Space to Restart"
-            )
-            ui.draw_state_text(world_surface, label)
+            if game_over_demo_complete:
+                ui.draw_demo_complete(
+                    world_surface,
+                    score_value=session.score_value,
+                    high_score=high_score,
+                    boss_level=DEMO_MODE_BOSS_TARGET_LEVEL,
+                )
+            else:
+                label = (
+                    f"GAME OVER: Score {session.score_value} | High Score {high_score} "
+                    "- Press R or Space to Restart"
+                )
+                ui.draw_state_text(world_surface, label)
 
         visual_feedback.draw_overlays(world_surface)
         if unlock_notification_timer > 0.0 and unlock_notification_text:
@@ -865,4 +928,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

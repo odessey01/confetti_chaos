@@ -11,7 +11,15 @@ import pygame
 class ConfettiParticle:
     """A single confetti particle that fades over time."""
 
-    def __init__(self, position: pygame.Vector2, velocity: pygame.Vector2, lifetime: float = 0.6) -> None:
+    def __init__(
+        self,
+        position: pygame.Vector2,
+        velocity: pygame.Vector2,
+        lifetime: float = 0.6,
+        *,
+        size: int = 4,
+        color: tuple[int, int, int] | None = None,
+    ) -> None:
         """Initialize a confetti particle.
 
         Args:
@@ -23,8 +31,8 @@ class ConfettiParticle:
         self.velocity = pygame.Vector2(velocity)
         self.lifetime = lifetime
         self.max_lifetime = lifetime
-        self.size = 4
-        self.color = random.choice(
+        self.size = max(2, int(size))
+        self.color = color or random.choice(
             [
                 (255, 120, 140),  # Red-pink
                 (255, 170, 90),   # Orange
@@ -94,6 +102,59 @@ class Confetti:
             lifetime = random.uniform(lifetime_min, lifetime_max)
 
             particle = ConfettiParticle(center, velocity, lifetime=lifetime)
+            self.particles.append(particle)
+
+    def spawn_starburst(
+        self,
+        center: pygame.Vector2,
+        *,
+        spoke_count: int = 26,
+        particles_per_spoke: int = 3,
+    ) -> None:
+        """Spawn a large, colorful radial burst used for super activation."""
+        vivid_palette = [
+            (255, 70, 110),
+            (255, 140, 40),
+            (255, 220, 70),
+            (120, 245, 110),
+            (60, 225, 245),
+            (120, 160, 255),
+            (255, 120, 240),
+        ]
+        safe_spokes = max(8, int(spoke_count))
+        safe_per_spoke = max(1, int(particles_per_spoke))
+        origin = pygame.Vector2(center)
+
+        for spoke_idx in range(safe_spokes):
+            base_angle = (math.tau * spoke_idx) / safe_spokes
+            for _ in range(safe_per_spoke):
+                angle = base_angle + random.uniform(-0.08, 0.08)
+                speed = random.uniform(260.0, 520.0)
+                velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
+                lifetime = random.uniform(0.42, 0.78)
+                particle = ConfettiParticle(
+                    origin,
+                    velocity,
+                    lifetime=lifetime,
+                    size=random.randint(4, 7),
+                    color=random.choice(vivid_palette),
+                )
+                self.particles.append(particle)
+
+        # Fill in between spokes so the burst feels dense and celebratory.
+        fill_count = max(18, safe_spokes // 2)
+        for _ in range(fill_count):
+            angle = random.uniform(0.0, math.tau)
+            speed = random.uniform(180.0, 360.0)
+            velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
+            lifetime = random.uniform(0.35, 0.62)
+            particle = ConfettiParticle(
+                origin,
+                velocity,
+                lifetime=lifetime,
+                size=random.randint(3, 6),
+                color=random.choice(vivid_palette),
+            )
             self.particles.append(particle)
 
     def update(self, delta_seconds: float) -> None:

@@ -90,13 +90,6 @@ It introduces:
 
 ---
 
-### delayed_blast_rocket
-- Tags: `rocket_explosion` + `rocket_sticky`
-- Effect: Sticks to enemies and detonates
-- Role: Trap / control
-
----
-
 ### pinball_rocket
 - Tags: `rocket_bounce` + `rocket_speed`
 - Effect: Ricochets between targets
@@ -131,7 +124,6 @@ NOTE:
 | Primary | Can Merge With |
 |--------|---------------|
 | burst_rocket | big_pop_rocket |
-| burst_rocket | delayed_blast_rocket |
 | big_pop_rocket | chain_rocket |
 | pinball_rocket | chain_rocket |
 | piercing_rocket | big_pop_rocket |
@@ -140,7 +132,6 @@ NOTE:
 
 | Blocked Combination | Reason |
 |--------------------|--------|
-| pinball + delayed_blast | Conflicting physics |
 | burst + piercing | Competing projectile behaviors |
 
 ---
