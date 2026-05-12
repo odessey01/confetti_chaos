@@ -6,14 +6,18 @@ from pathlib import Path
 project_root = Path(SPECPATH)  # provided by PyInstaller runtime
 src_root = project_root / "src"
 assets_root = project_root / "assets"
+demo_mode_flag = project_root / "build_flags" / "demo_mode.flag"
 
 block_cipher = None
+datas = [(str(assets_root), "assets")]
+if demo_mode_flag.exists():
+    datas.append((str(demo_mode_flag), "build_flags"))
 
 a = Analysis(
     [str(src_root / "main.py")],
     pathex=[str(src_root)],
     binaries=[],
-    datas=[(str(assets_root), "assets")],
+    datas=datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

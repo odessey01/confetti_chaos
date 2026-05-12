@@ -78,6 +78,13 @@ class Player:
     def set_health(self, value: int) -> None:
         self.current_health = max(0, min(int(value), int(self.max_health)))
 
+    def heal(self, amount: int = 1) -> bool:
+        if amount <= 0:
+            return False
+        before = int(self.current_health)
+        self.set_health(before + int(amount))
+        return self.current_health > before
+
     def apply_damage(self, amount: int = 1) -> bool:
         if amount <= 0:
             return False

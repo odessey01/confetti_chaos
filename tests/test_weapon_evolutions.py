@@ -34,7 +34,6 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         ids = {item.evolution_id for item in definitions}
         self.assertIn("burst_rocket", ids)
         self.assertIn("big_pop_rocket", ids)
-        self.assertIn("delayed_blast_rocket", ids)
         self.assertIn("pinball_rocket", ids)
         self.assertIn("chain_rocket", ids)
         self.assertIn("piercing_rocket", ids)
@@ -101,7 +100,6 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
             weapon_id="bottle_rocket",
             acquired_tags=(
                 "rocket_explosion",
-                "rocket_sticky",
                 "rocket_bounce",
                 "rocket_speed",
                 "rocket_power",
@@ -109,7 +107,6 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
             ),
         )
         bottle_ids = {item.evolution_id for item in bottle_eligible}
-        self.assertIn("delayed_blast_rocket", bottle_ids)
         self.assertIn("pinball_rocket", bottle_ids)
         self.assertIn("chain_rocket", bottle_ids)
         self.assertIn("piercing_rocket", bottle_ids)
@@ -131,7 +128,7 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
             added_tags=("rocket_sticky",),
         )
         bottle_ids = {item.evolution_id for item in bottle_preview}
-        self.assertIn("delayed_blast_rocket", bottle_ids)
+        self.assertNotIn("delayed_blast_rocket", bottle_ids)
 
         sparkler_preview = preview_weapon_evolutions_with_added_tags(
             weapon_id="sparkler",
@@ -268,12 +265,12 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         )
         second = tracker.check_for_new(
             weapon_id="bottle_rocket",
-            acquired_tags=("rocket_explosion", "rocket_split", "rocket_sticky"),
+            acquired_tags=("rocket_explosion", "rocket_split", "rocket_power"),
         )
         self.assertEqual(len(first), 1)
         self.assertEqual(len(second), 1)
         self.assertEqual(first[0].result_form_id, "burst_rocket")
-        self.assertEqual(second[0].result_form_id, "delayed_blast_rocket")
+        self.assertEqual(second[0].result_form_id, "big_pop_rocket")
 
     def test_game_session_upgrade_apply_runs_evolution_check(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -382,8 +379,8 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         ]
         previews = session.current_upgrade_choice_previews()
         self.assertEqual(len(previews), 1)
-        self.assertTrue(bool(previews[0]["leads_to_evolution"]))
-        self.assertIn("delayed_blast_rocket", previews[0]["evolution_ids"])
+        self.assertFalse(bool(previews[0]["leads_to_evolution"]))
+        self.assertEqual(previews[0]["evolution_ids"], ())
 
     def test_game_session_merges_compatible_bottle_rocket_behaviors_without_replacing_form(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -403,12 +400,12 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
 
         session._current_upgrade_choices = [  # noqa: SLF001
             UpgradeDefinition(
-                id="enemy_slow",
-                name="Sticky Floor",
-                description="-Enemy move speed.",
-                category="control",
-                effect_values={"enemy_speed_reduction": 0.06},
-                tags=("rocket_sticky",),
+                id="projectile_damage_up",
+                name="Heavy Confetti",
+                description="+Rocket damage.",
+                category="weapon",
+                effect_values={"projectile_damage": 1.0},
+                tags=("rocket_power",),
             )
         ]
         self.assertTrue(session.apply_upgrade_choice_by_index(0))
@@ -416,14 +413,14 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         snapshot = session.weapon_evolution_snapshot()
         self.assertEqual(snapshot["active_forms_by_weapon"].get("bottle_rocket"), "burst_rocket")
         self.assertIn(
-            "delayed_blast_rocket",
+            "big_pop_rocket",
             snapshot["active_behavior_ids_by_weapon"].get("bottle_rocket", ()),
         )
 
         session.fire_projectile(pygame.Vector2(1.0, 0.0))
         self.assertEqual(getattr(session.projectiles[0], "evolution_form_id", ""), "burst_rocket")
         self.assertIn(
-            "delayed_blast_rocket",
+            "big_pop_rocket",
             getattr(session.projectiles[0], "evolution_behavior_ids", ()),
         )
 
@@ -457,14 +454,14 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
             acquired_tags=("rocket_speed", "rocket_split"),
         )
         self.assertEqual({item.result_form_id for item in burst}, {"burst_rocket"})
-        self.assertEqual({item.result_form_id for item in sticky}, {"delayed_blast_rocket"})
+        self.assertEqual(sticky, [])
         self.assertEqual({item.result_form_id for item in pinball}, {"pinball_rocket"})
         self.assertEqual({item.result_form_id for item in chain}, {"chain_rocket"})
         self.assertEqual({item.result_form_id for item in piercing}, {"piercing_rocket"})
 
-    def test_bottle_rocket_has_six_paths_with_two_non_explosion_routes(self) -> None:
+    def test_bottle_rocket_has_five_paths_with_two_non_explosion_routes(self) -> None:
         definitions = [item for item in list_weapon_evolutions() if item.weapon_id == "bottle_rocket"]
-        self.assertGreaterEqual(len(definitions), 6)
+        self.assertGreaterEqual(len(definitions), 5)
         non_explosion = [
             item for item in definitions if "rocket_explosion" not in set(item.required_tags)
         ]
@@ -507,11 +504,11 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
 
         bottle_first = bottle_tracker.check_for_new(
             weapon_id="bottle_rocket",
-            acquired_tags=("rocket_explosion", "rocket_split", "rocket_power", "rocket_sticky"),
+            acquired_tags=("rocket_explosion", "rocket_split", "rocket_power"),
         )
         bottle_second = bottle_tracker.check_for_new(
             weapon_id="bottle_rocket",
-            acquired_tags=("rocket_explosion", "rocket_split", "rocket_power", "rocket_sticky", "rocket_bounce", "rocket_speed"),
+            acquired_tags=("rocket_explosion", "rocket_split", "rocket_power", "rocket_bounce", "rocket_speed"),
         )
         sparkler_first = sparkler_tracker.check_for_new(
             weapon_id="sparkler",

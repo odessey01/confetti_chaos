@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import importlib
+import random
 
 import pygame
 
@@ -16,7 +17,7 @@ from enemies import (
     PinataEnemy,
     StreamerSnake,
 )
-from pickups import XpDrop
+from pickups import LollipopDrop, XpDrop
 from player import BottleRocket, BottleRocketFlightProfile, Player
 from .aim_assist import AimAssistConfig, AimAssistSystem
 from .character_passives import CharacterPassiveProfile, get_character_passive
@@ -102,6 +103,11 @@ class GameSession:
     XP_DROP_FADE_DURATION_SECONDS = 2.5
     XP_DROP_SIZE_MIN = 12
     XP_DROP_SIZE_MAX = 20
+    PINATA_LOLLIPOP_DROP_CHANCE = 0.25
+    LOLLIPOP_HEAL_AMOUNT = 1
+    LOLLIPOP_DROP_SIZE = 16
+    LOLLIPOP_DROP_LIFETIME_SECONDS = 14.0
+    LOLLIPOP_DROP_FADE_DURATION_SECONDS = 2.5
     DODGE_AFFECTED_BY_PASSIVES = False
     AIM_ASSIST_CONTROLLER_ENABLED = True
     AIM_ASSIST_KEYBOARD_ENABLED = False
@@ -146,6 +152,7 @@ class GameSession:
         self.projectiles: list[BottleRocket]
         self.enemy_sprays: list[ConfettiSpray]
         self.xp_drops: list[XpDrop]
+        self.health_drops: list[LollipopDrop]
         self.confetti: Confetti
         self.score_seconds: float
         self.elapsed_time: float
@@ -269,6 +276,7 @@ class GameSession:
         self.projectiles = []
         self.enemy_sprays = []
         self.xp_drops = []
+        self.health_drops = []
         self.confetti = Confetti()
         self.run_progression.reset()
         self.run_upgrades.reset()
@@ -425,6 +433,14 @@ class GameSession:
         self.xp_drops = active_drops
         self._apply_xp_drop_magnetism(player_center, delta_seconds)
         self._collect_xp_drops(player_collision_rect)
+        active_health_drops: list[LollipopDrop] = []
+        for drop in self.health_drops:
+            drop.update(delta_seconds)
+            if not drop.is_expired():
+                active_health_drops.append(drop)
+        self.health_drops = active_health_drops
+        self._apply_health_drop_magnetism(player_center, delta_seconds)
+        self._collect_health_drops(player_collision_rect)
         
         # Check projectile-hazard collisions
         kills = self._check_projectile_collisions()
@@ -2100,6 +2116,8 @@ class GameSession:
             base_xp = int(self.XP_DROP_VALUES.get(kind, 10))
             xp_value = max(1, int(round(base_xp * (1.0 + self._character_xp_gain_mult))))
             self._spawn_xp_drop(center, xp_value=xp_value)
+            if str(kind) == "pinata":
+                self._maybe_spawn_pinata_lollipop_drop(center)
 
     def _spawn_xp_drop(self, center: pygame.Vector2, *, xp_value: int) -> None:
         self.xp_drops.append(
@@ -2109,6 +2127,18 @@ class GameSession:
                 size=self._xp_drop_size_for_value(xp_value),
                 lifetime_seconds=self.XP_DROP_LIFETIME_SECONDS,
                 fade_duration_seconds=self.XP_DROP_FADE_DURATION_SECONDS,
+            )
+        )
+
+    def _maybe_spawn_pinata_lollipop_drop(self, center: pygame.Vector2) -> None:
+        if random.random() >= self.PINATA_LOLLIPOP_DROP_CHANCE:
+            return
+        self.health_drops.append(
+            LollipopDrop(
+                pygame.Vector2(center),
+                size=self.LOLLIPOP_DROP_SIZE,
+                lifetime_seconds=self.LOLLIPOP_DROP_LIFETIME_SECONDS,
+                fade_duration_seconds=self.LOLLIPOP_DROP_FADE_DURATION_SECONDS,
             )
         )
 
@@ -2156,6 +2186,53 @@ class GameSession:
         magnet_radius = self.XP_MAGNET_RADIUS + self._character_pickup_radius_bonus
         magnet_speed = self.XP_MAGNET_SPEED * (1.0 + self._character_xp_magnet_mult)
         for drop in self.xp_drops:
+            offset = player_center - drop.position
+            distance = offset.length()
+            if distance <= 0.001 or distance > magnet_radius:
+                continue
+            direction = offset / distance
+            pull_scale = 1.0 - (distance / magnet_radius)
+            step = magnet_speed * pull_scale * clamped_delta
+            if step >= distance:
+                drop.position = pygame.Vector2(player_center)
+                continue
+            drop.position += direction * step
+
+    def _collect_health_drops(self, player_collision_rect: pygame.Rect) -> None:
+        if not self.health_drops:
+            return
+        pickup_rect = player_collision_rect.inflate(
+            int((self.XP_PICKUP_RADIUS + self._character_pickup_radius_bonus) * 2),
+            int((self.XP_PICKUP_RADIUS + self._character_pickup_radius_bonus) * 2),
+        )
+        remaining: list[LollipopDrop] = []
+        for drop in self.health_drops:
+            if drop.is_expired():
+                continue
+            if pickup_rect.colliderect(drop.rect):
+                healed = self.player.heal(self.LOLLIPOP_HEAL_AMOUNT)
+                if healed:
+                    self.confetti.spawn_burst(
+                        pygame.Vector2(drop.position),
+                        count=4,
+                        speed_min=78.0,
+                        speed_max=142.0,
+                        lifetime_min=0.16,
+                        lifetime_max=0.28,
+                    )
+                    self._spawn_pulse_centers.append((int(drop.position.x), int(drop.position.y)))
+                    self._pending_xp_pickup_sfx_count += 1
+                continue
+            remaining.append(drop)
+        self.health_drops = remaining
+
+    def _apply_health_drop_magnetism(self, player_center: pygame.Vector2, delta_seconds: float) -> None:
+        if not self.health_drops:
+            return
+        clamped_delta = max(0.0, float(delta_seconds))
+        magnet_radius = self.XP_MAGNET_RADIUS + self._character_pickup_radius_bonus
+        magnet_speed = self.XP_MAGNET_SPEED * (1.0 + self._character_xp_magnet_mult)
+        for drop in self.health_drops:
             offset = player_center - drop.position
             distance = offset.length()
             if distance <= 0.001 or distance > magnet_radius:
@@ -2379,6 +2456,8 @@ class GameSession:
         for spray in self.enemy_sprays:
             spray.draw(surface)
         for drop in self.xp_drops:
+            drop.draw(surface)
+        for drop in self.health_drops:
             drop.draw(surface)
         overlays = self.active_weapon_visual_overlays()
         for overlay in overlays:
@@ -2933,6 +3012,7 @@ class GameSession:
         super_id = self._active_character_super.super_id
         self._super_charge = 0
         self._activate_super_effect(super_id)
+        self.confetti.spawn_starburst(pygame.Vector2(self.player.rect.center))
         self._pending_super_activate_sfx_count += 1
         return super_id
 

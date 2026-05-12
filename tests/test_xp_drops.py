@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 import pygame
 
@@ -14,7 +15,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pickups import XpDrop  # noqa: E402
+from pickups import LollipopDrop, XpDrop  # noqa: E402
 from systems.game_session import GameSession  # noqa: E402
 
 
@@ -122,6 +123,22 @@ class XpDropValidationTests(unittest.TestCase):
         low = session._xp_drop_size_for_value(session.XP_DROP_VALUES["balloon"])
         high = session._xp_drop_size_for_value(session.XP_DROP_VALUES["boss_balloon"])
         self.assertGreater(high, low)
+
+    def test_pinata_kill_can_spawn_lollipop_drop(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        with patch("systems.game_session.random.random", return_value=0.0):
+            session._spawn_xp_drops_for_kills([pygame.Vector2(220.0, 220.0)], ["pinata"])
+        self.assertEqual(len(session.health_drops), 1)
+        self.assertIsInstance(session.health_drops[0], LollipopDrop)
+
+    def test_collecting_lollipop_heals_player_and_removes_drop(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        session.player.set_health(session.player.max_health - 1)
+        center = pygame.Vector2(session.player_collision_rect().center)
+        session.health_drops = [LollipopDrop(center)]
+        session._collect_health_drops(session.player_collision_rect())
+        self.assertEqual(session.player.current_health, session.player.max_health)
+        self.assertEqual(len(session.health_drops), 0)
 
 
 if __name__ == "__main__":

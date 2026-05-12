@@ -34,14 +34,6 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         required_weapon_level=3,
     ),
     WeaponEvolutionDefinition(
-        evolution_id="delayed_blast_rocket",
-        weapon_id="bottle_rocket",
-        required_tags=("rocket_explosion", "rocket_sticky"),
-        result_form_id="delayed_blast_rocket",
-        description="Bottle Rocket sticks and detonates after a short delay.",
-        required_weapon_level=3,
-    ),
-    WeaponEvolutionDefinition(
         evolution_id="pinball_rocket",
         weapon_id="bottle_rocket",
         required_tags=("rocket_bounce", "rocket_speed"),

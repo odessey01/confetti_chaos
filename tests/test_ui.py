@@ -114,6 +114,28 @@ class UiRendererValidationTests(unittest.TestCase):
             previous = rect
         self.assertLessEqual(option_rects[-1].bottom, layout["prompt"].top)
 
+    def test_demo_complete_overlay_renders_without_error(self) -> None:
+        if not pygame.font.get_init():
+            pygame.font.init()
+        surface = pygame.Surface((1280, 720), pygame.SRCALPHA)
+        ui = UiRenderer()
+        ui.draw_demo_complete(
+            surface,
+            score_value=12345,
+            high_score=20000,
+            boss_level=10,
+        )
+        self.assertIsInstance(surface, pygame.Surface)
+
+    def test_timer_renders_for_short_and_long_durations(self) -> None:
+        if not pygame.font.get_init():
+            pygame.font.init()
+        surface = pygame.Surface((1280, 720), pygame.SRCALPHA)
+        ui = UiRenderer()
+        ui.draw_timer(surface, 95.0)      # 01:35
+        ui.draw_timer(surface, 3665.0)    # 01:01:05
+        self.assertIsInstance(surface, pygame.Surface)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,6 +40,15 @@ class PlayerHealthValidationTests(unittest.TestCase):
         player.set_health(-10)
         self.assertEqual(player.current_health, 0)
 
+    def test_heal_restores_health_and_clamps_to_max(self) -> None:
+        player = Player(0.0, 0.0)
+        player.set_health(1)
+        healed = player.heal(1)
+        self.assertTrue(healed)
+        self.assertEqual(player.current_health, 2)
+        player.heal(99)
+        self.assertEqual(player.current_health, player.max_health)
+
     def test_grant_invulnerability_applies_and_preserves_longer_duration(self) -> None:
         player = Player(0.0, 0.0)
         player.grant_invulnerability(0.5)
