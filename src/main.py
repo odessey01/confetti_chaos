@@ -22,6 +22,7 @@ from systems import (
     MIN_START_LEVEL,
     assets_dir,
     clamp_selected_start_level,
+    create_leaderboard_service,
     get_character_unlock_condition,
     get_character_passive,
     load_high_score,
@@ -334,6 +335,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     assets_dir().mkdir(parents=True, exist_ok=True)
     saves_dir()
     high_score = load_high_score()
+    leaderboard_service = create_leaderboard_service()
+    leaderboard_snapshot = leaderboard_service.snapshot(limit=3)
 
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -579,6 +582,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if session.score_value > high_score:
                     high_score = session.score_value
                     save_high_score(high_score)
+                leaderboard_service.submit_score(session.score_value)
+                leaderboard_snapshot = leaderboard_service.snapshot(limit=3)
                 meta_progression.total_runs_completed = max(
                     0,
                     int(meta_progression.total_runs_completed) + 1,
@@ -718,6 +723,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 runtime_settings.selected_start_level,
                 get_weapon_definition(selected_weapon_id).display_name,
             )
+            global_lines = tuple(
+                f"{index + 1}. {row.player_name}: {row.score}"
+                for index, row in enumerate(leaderboard_snapshot.global_top[:3])
+            )
+            if leaderboard_snapshot.steam_available:
+                friend_lines = tuple(
+                    f"{index + 1}. {row.player_name}: {row.score}"
+                    for index, row in enumerate(leaderboard_snapshot.friend_top[:3])
+                )
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Global Leaderboard",
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 480),
+                )
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Friends Leaderboard",
+                    lines=friend_lines if friend_lines else ("No friend scores yet",),
+                    top_left=(28, 578),
+                )
+            else:
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Local Leaderboard",
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 520),
+                )
         elif state == GameState.PLAYER_SELECT:
             selected_key = player_select_ids[player_select_index] if player_select_ids else "teddy_f"
             selected_variant_id = get_party_animal(selected_key).variant_id
@@ -909,6 +942,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "- Press R or Space to Restart"
                 )
                 ui.draw_state_text(world_surface, label)
+                global_lines = tuple(
+                    f"{index + 1}. {row.player_name}: {row.score}"
+                    for index, row in enumerate(leaderboard_snapshot.global_top[:3])
+                )
+                leaderboard_title = "Global Leaderboard" if leaderboard_snapshot.steam_available else "Local Leaderboard"
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title=leaderboard_title,
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 520),
+                )
 
         visual_feedback.draw_overlays(world_surface)
         if unlock_notification_timer > 0.0 and unlock_notification_text:

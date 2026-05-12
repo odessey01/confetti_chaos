@@ -33,6 +33,17 @@ from .character_unlocks import (
 )
 from .game_session import GameSession
 from .high_score import load_high_score, save_high_score
+from .leaderboard import (
+    DEFAULT_LEADERBOARD_ID,
+    DEFAULT_LOCAL_PLAYER_ID,
+    LEADERBOARD_FILE_NAME,
+    LeaderboardEntry,
+    LeaderboardSnapshot,
+    LeaderboardService,
+    LocalJsonLeaderboardService,
+    SteamLeaderboardService,
+    create_leaderboard_service,
+)
 from .input_controller import InputController, InputMethod
 from .meta_progression import (
     DEFAULT_UNLOCKED_CHARACTERS,
@@ -220,6 +231,15 @@ __all__ = [
     "VisualFeedback",
     "load_high_score",
     "save_high_score",
+    "LeaderboardEntry",
+    "LeaderboardSnapshot",
+    "LeaderboardService",
+    "LocalJsonLeaderboardService",
+    "SteamLeaderboardService",
+    "LEADERBOARD_FILE_NAME",
+    "DEFAULT_LEADERBOARD_ID",
+    "DEFAULT_LOCAL_PLAYER_ID",
+    "create_leaderboard_service",
     "asset_path",
     "assets_dir",
     "project_root",

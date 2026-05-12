@@ -81,6 +81,7 @@ class GameSession:
     SPARKLER_SWEEP_CONE_DEGREES = 82.0
     SPARKLER_ARC_INNER_RADIUS_RATIO = 0.24
     SPARKLER_SWEEP_DURATION = 0.08
+    SPARKLER_SWEEP_TRAIL_DEGREES = 28.0
     ORBITING_SPARK_COUNT = 3
     ORBITING_SPARK_RADIUS = 98.0
     ORBITING_SPARK_CONTACT_RADIUS = 20.0
@@ -142,6 +143,7 @@ class GameSession:
     BEAR_ROAR_BOSS_CHIP_DAMAGE = 1
     RACCOON_CHAOS_DROP_XP_BONUS = 16
     RACCOON_CHAOS_DROP_SCORE_BONUS = 120
+    MULTI_EVOLUTION_WEAPON_IDS = frozenset({"bottle_rocket", "sparkler"})
 
     def __init__(self, bounds: pygame.Rect, hazard_count: int = 1) -> None:
         self.bounds = bounds
@@ -710,7 +712,8 @@ class GameSession:
         cone_bonus = max(0.0, effects.get("sparkler_cone_bonus_degrees", 0.0))
         damage_bonus = max(0, int(effects.get("sparkler_damage_bonus", 0.0)))
         evolution_form_id = self._active_weapon_form_id("sparkler")
-        if evolution_form_id in ("orbiting_sparklers", "spark_aura"):
+        has_aura = self._weapon_has_behavior("sparkler", "spark_aura")
+        if has_aura:
             return
         attack_range = max(
             24.0,
@@ -742,6 +745,8 @@ class GameSession:
             "cone_degrees": float(swing["cone_degrees"]),
             "range": float(swing["range"]),
             "inner_range": float(swing["inner_range"]),
+            "sweep_start_degrees": float(swing["sweep_start_degrees"]),
+            "sweep_end_degrees": float(swing["sweep_end_degrees"]),
             "tip_left": swing["tip_left"],
             "tip_right": swing["tip_right"],
             "expires_in": self.SPARKLER_SWEEP_DURATION,
@@ -955,7 +960,7 @@ class GameSession:
         if self.active_weapon_id != "sparkler":
             self._spark_aura_tick_timer = 0.0
             return
-        if self._active_weapon_form_id("sparkler") != "spark_aura":
+        if not self._weapon_has_behavior("sparkler", "spark_aura"):
             self._spark_aura_tick_timer = 0.0
             return
         self._spark_aura_tick_timer += max(0.0, float(delta_seconds))
@@ -967,7 +972,7 @@ class GameSession:
         if self.active_weapon_id != "sparkler":
             self._orbiting_spark_contact_cooldowns.clear()
             return
-        if self._active_weapon_form_id("sparkler") != "orbiting_sparklers":
+        if not self._weapon_has_behavior("sparkler", "orbiting_sparklers"):
             self._orbiting_spark_contact_cooldowns.clear()
             return
         self._orbiting_spark_angle_degrees = (
@@ -1283,6 +1288,8 @@ class GameSession:
             "range": outer_range,
             "inner_range": inner_range,
             "cone_degrees": float(cone_degrees),
+            "sweep_start_degrees": -half_cone,
+            "sweep_end_degrees": half_cone,
             "tip_left": tip_left,
             "tip_right": tip_right,
         }
@@ -1298,6 +1305,8 @@ class GameSession:
         cone_degrees = float(self._sparkler_attack_debug.get("cone_degrees", 0.0))
         outer_range = float(self._sparkler_attack_debug.get("range", 0.0))
         inner_range = float(self._sparkler_attack_debug.get("inner_range", 0.0))
+        sweep_start = float(self._sparkler_attack_debug.get("sweep_start_degrees", -(cone_degrees * 0.5)))
+        sweep_end = float(self._sparkler_attack_debug.get("sweep_end_degrees", (cone_degrees * 0.5)))
         if not isinstance(origin, pygame.Vector2):
             return
         if not isinstance(direction, pygame.Vector2):
@@ -1306,7 +1315,14 @@ class GameSession:
             return
         facing = direction.normalize()
 
-        strength = max(0.0, min(expires / self.SPARKLER_SWEEP_DURATION, 1.0))
+        life_fraction = max(0.0, min(expires / self.SPARKLER_SWEEP_DURATION, 1.0))
+        progress = 1.0 - life_fraction
+        # Move the swing head across the attack cone over the swing duration.
+        head_angle = sweep_start + ((sweep_end - sweep_start) * progress)
+        trail_span = max(8.0, min(self.SPARKLER_SWEEP_TRAIL_DEGREES, max(8.0, cone_degrees)))
+        trail_start = max(sweep_start, head_angle - trail_span)
+        trail_end = min(sweep_end, head_angle)
+        strength = max(0.0, min(0.25 + (life_fraction * 0.85), 1.0))
         glow_alpha = int(110 + (95 * strength))
         core_alpha = int(190 + (60 * strength))
         swing_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
@@ -1314,15 +1330,17 @@ class GameSession:
             origin=origin,
             direction=facing,
             radius=outer_range,
-            cone_degrees=cone_degrees,
-            segments=18,
+            cone_degrees=(trail_end - trail_start),
+            segments=10,
+            start_angle_degrees=trail_start,
         )
         inner_points = self._sparkler_arc_points(
             origin=origin,
             direction=facing,
             radius=max(2.0, inner_range),
-            cone_degrees=cone_degrees,
-            segments=18,
+            cone_degrees=(trail_end - trail_start),
+            segments=10,
+            start_angle_degrees=trail_start,
         )
         if len(outer_points) >= 2:
             pygame.draw.lines(
@@ -1345,6 +1363,13 @@ class GameSession:
                 False,
                 outer_points,
                 width=1,
+            )
+            swing_head = outer_points[-1]
+            pygame.draw.circle(
+                swing_surface,
+                (255, 247, 214, min(255, int(220 * strength))),
+                (int(swing_head[0]), int(swing_head[1])),
+                4,
             )
         if inner_range > 2.0 and len(inner_points) >= 2:
             pygame.draw.lines(
@@ -1406,13 +1431,20 @@ class GameSession:
         radius: float,
         cone_degrees: float,
         segments: int = 14,
+        start_angle_degrees: float | None = None,
     ) -> list[tuple[float, float]]:
-        half_cone = max(5.0, float(cone_degrees) * 0.5)
+        resolved_cone = max(1.0, float(cone_degrees))
         clamped_segments = max(4, int(segments))
-        step = (half_cone * 2.0) / float(clamped_segments)
+        if start_angle_degrees is None:
+            half_cone = max(5.0, resolved_cone * 0.5)
+            start_angle = -half_cone
+            step = (half_cone * 2.0) / float(clamped_segments)
+        else:
+            start_angle = float(start_angle_degrees)
+            step = resolved_cone / float(clamped_segments)
         points: list[tuple[float, float]] = []
         for index in range(clamped_segments + 1):
-            angle = -half_cone + (step * index)
+            angle = start_angle + (step * index)
             point = pygame.Vector2(origin) + (pygame.Vector2(direction).rotate(angle) * radius)
             points.append((point.x, point.y))
         return points
@@ -1516,7 +1548,7 @@ class GameSession:
             preview_evolutions = []
             allow_additional_evolution = (
                 self.active_weapon_id not in self._weapon_evolution_forms
-                or self.active_weapon_id == "bottle_rocket"
+                or self.active_weapon_id in self.MULTI_EVOLUTION_WEAPON_IDS
             )
             if allow_additional_evolution:
                 preview_evolutions = preview_weapon_evolutions_with_added_tags(
@@ -1559,7 +1591,7 @@ class GameSession:
         new_evolutions = []
         allow_additional_evolution = (
             self.active_weapon_id not in self._weapon_evolution_forms
-            or self.active_weapon_id == "bottle_rocket"
+            or self.active_weapon_id in self.MULTI_EVOLUTION_WEAPON_IDS
         )
         if allow_additional_evolution:
             new_evolutions = self._weapon_evolution_tracker.check_for_new(
@@ -1600,6 +1632,9 @@ class GameSession:
         if active_form_id:
             behavior_ids.add(active_form_id)
         return behavior_ids
+
+    def _weapon_has_behavior(self, weapon_id: str, behavior_id: str) -> bool:
+        return str(behavior_id) in self._weapon_behavior_ids(str(weapon_id))
 
     def _projectile_has_bottle_rocket_behavior(self, projectile: BottleRocket, behavior_id: str) -> bool:
         behavior_ids = {
@@ -2795,7 +2830,7 @@ class GameSession:
     def _draw_spark_aura_visual(self, surface: pygame.Surface) -> None:
         if self.active_weapon_id != "sparkler":
             return
-        if self._active_weapon_form_id("sparkler") != "spark_aura":
+        if not self._weapon_has_behavior("sparkler", "spark_aura"):
             return
         center = pygame.Vector2(self.player.rect.center)
         progress = self._spark_aura_tick_timer / max(0.001, self.SPARK_AURA_TICK_INTERVAL)
@@ -2831,7 +2866,7 @@ class GameSession:
     def _draw_orbiting_sparks_visual(self, surface: pygame.Surface) -> None:
         if self.active_weapon_id != "sparkler":
             return
-        if self._active_weapon_form_id("sparkler") != "orbiting_sparklers":
+        if not self._weapon_has_behavior("sparkler", "orbiting_sparklers"):
             return
         orbit_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         orbit_center = pygame.Vector2(self.player.rect.center)

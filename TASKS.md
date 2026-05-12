@@ -1,5 +1,7 @@
 ## Steam Leaderboard Integration
 
+Status: DONE (2026-05-12)
+
 ### Objective
 Add Steam leaderboard support for run scores while preserving offline/local fallback behavior.
 

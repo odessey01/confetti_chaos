@@ -256,6 +256,21 @@ class UiRenderer:
         label_rect = label.get_rect(center=banner_rect.center)
         surface.blit(label, label_rect)
 
+    def draw_leaderboard_summary(
+        self,
+        surface: pygame.Surface,
+        *,
+        title: str,
+        lines: tuple[str, ...],
+        top_left: tuple[int, int],
+    ) -> None:
+        heading = self._body_font.render(str(title), True, (255, 226, 138))
+        surface.blit(heading, top_left)
+        x, y = top_left
+        for index, line in enumerate(lines):
+            row = self._body_font.render(str(line), True, (216, 229, 242))
+            surface.blit(row, (x, y + 24 + (index * 22)))
+
     def menu_layout_rects(
         self,
         surface: pygame.Surface,

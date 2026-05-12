@@ -78,6 +78,7 @@ class WeaponSystemValidationTests(unittest.TestCase):
         assert isinstance(tip_right, pygame.Vector2)
         self.assertGreater(tip_left.x, origin.x)
         self.assertGreater(tip_right.x, origin.x)
+        self.assertLess(float(snapshot["sweep_start_degrees"]), float(snapshot["sweep_end_degrees"]))
 
     def test_sparkler_attack_shape_points_up_when_aiming_up(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -220,6 +221,18 @@ class WeaponSystemValidationTests(unittest.TestCase):
         self.assertIsInstance(surface, pygame.Surface)
         session.update_playing(0.2, pygame.Vector2(0.0, 0.0), attack=False)
         self.assertEqual(session.sparkler_attack_snapshot(), {})
+
+    def test_sparkler_visual_snapshot_tracks_swing_progress_window(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        session.set_active_weapon("sparkler")
+        session.fire_projectile(pygame.Vector2(1.0, 0.0))
+        snapshot = session.sparkler_attack_snapshot()
+        self.assertIn("sweep_start_degrees", snapshot)
+        self.assertIn("sweep_end_degrees", snapshot)
+        start_expiry = float(snapshot["expires_in"])
+        session.update_playing(0.04, pygame.Vector2(0.0, 0.0), attack=False)
+        mid_expiry = float(session.sparkler_attack_snapshot()["expires_in"])
+        self.assertLess(mid_expiry, start_expiry)
 
     def test_sparkler_uses_player_facing_when_input_direction_is_zero(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)

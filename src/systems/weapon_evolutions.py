@@ -100,7 +100,7 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
 )
 
 _EVOLUTION_BY_ID = {definition.evolution_id: definition for definition in WEAPON_EVOLUTION_DEFINITIONS}
-COMPATIBLE_MULTI_EVOLUTION_WEAPONS: frozenset[str] = frozenset({"bottle_rocket"})
+COMPATIBLE_MULTI_EVOLUTION_WEAPONS: frozenset[str] = frozenset({"bottle_rocket", "sparkler"})
 
 
 def list_weapon_evolutions() -> tuple[WeaponEvolutionDefinition, ...]:
