@@ -61,12 +61,24 @@ class WeaponVisualDefinitionTests(unittest.TestCase):
 
     def test_registry_is_multi_weapon_ready_with_placeholder_sparkler(self) -> None:
         sparkler = get_weapon_visual_variant("sparkler", "tier1")
+        bubble = get_weapon_visual_variant("bubble_wand", "tier1")
+        kazoo = get_weapon_visual_variant("kazoo_beam", "tier1")
         self.assertIsNotNone(sparkler)
+        self.assertIsNotNone(bubble)
+        self.assertIsNotNone(kazoo)
         assert sparkler is not None
+        assert bubble is not None
+        assert kazoo is not None
         self.assertEqual(sparkler.default_overlay_sprite, "sparkler_tier1_placeholder")
+        self.assertEqual(bubble.default_overlay_sprite, "bubble_wand_tier1_placeholder")
+        self.assertEqual(kazoo.default_overlay_sprite, "kazoo_beam_tier1_placeholder")
         self.assertEqual(resolve_weapon_visual_variant_id("sparkler", evolution_count=0), "tier1")
+        self.assertEqual(resolve_weapon_visual_variant_id("bubble_wand", evolution_count=0), "tier1")
+        self.assertEqual(resolve_weapon_visual_variant_id("kazoo_beam", evolution_count=0), "tier1")
         self.assertIn("bottle_rocket", weapon_ids_with_visuals())
         self.assertIn("sparkler", weapon_ids_with_visuals())
+        self.assertIn("bubble_wand", weapon_ids_with_visuals())
+        self.assertIn("kazoo_beam", weapon_ids_with_visuals())
 
 
 if __name__ == "__main__":

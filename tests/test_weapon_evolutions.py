@@ -29,7 +29,7 @@ from systems.run_upgrades import missing_tags_in_upgrade_pool, upgrade_ids_by_ta
 
 
 class WeaponEvolutionValidationTests(unittest.TestCase):
-    def test_evolution_definitions_cover_bottle_and_sparkler_paths(self) -> None:
+    def test_evolution_definitions_cover_weapon_paths(self) -> None:
         definitions = list_weapon_evolutions()
         ids = {item.evolution_id for item in definitions}
         self.assertIn("burst_rocket", ids)
@@ -42,6 +42,20 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         self.assertIn("spark_aura", ids)
         self.assertIn("flare_whip", ids)
         self.assertIn("ember_ring", ids)
+        self.assertIn("hyper_yoyo", ids)
+        self.assertIn("twin_yoyos", ids)
+        self.assertIn("orbit_yoyo_storm", ids)
+        self.assertIn("chain_yoyo", ids)
+        self.assertIn("bubble_storm", ids)
+        self.assertIn("sticky_foam_field", ids)
+        self.assertIn("giant_bubble", ids)
+        self.assertIn("bubble_bounce", ids)
+        self.assertIn("soap_cyclone", ids)
+        self.assertIn("rainbow_resonance", ids)
+        self.assertIn("sonic_squeal", ids)
+        self.assertIn("feedback_loop", ids)
+        self.assertIn("party_laser", ids)
+        self.assertIn("disco_sweep", ids)
 
     def test_all_evolution_required_tags_exist_in_upgrade_pool(self) -> None:
         definitions = list_weapon_evolutions()
@@ -243,7 +257,7 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         )
         self.assertEqual(len(resolved), 1)
 
-    def test_tracker_blocks_conflicting_second_evolution_for_same_weapon(self) -> None:
+    def test_tracker_allows_second_sparkler_evolution_when_additional_tags_are_met(self) -> None:
         tracker = WeaponEvolutionTracker()
         first = tracker.check_for_new(
             weapon_id="sparkler",
@@ -254,7 +268,7 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
             acquired_tags=("sparkler_range", "sparkler_speed", "sparkler_orbit", "sparkler_persistence"),
         )
         self.assertEqual(len(first), 1)
-        self.assertEqual(second, [])
+        self.assertEqual(len(second), 1)
         self.assertTrue(tracker.has_triggered_weapon("sparkler"))
 
     def test_tracker_allows_bottle_rocket_to_gain_additional_compatible_evolutions(self) -> None:
@@ -271,6 +285,34 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         self.assertEqual(len(second), 1)
         self.assertEqual(first[0].result_form_id, "burst_rocket")
         self.assertEqual(second[0].result_form_id, "big_pop_rocket")
+
+    def test_tracker_allows_bubble_wand_to_gain_additional_compatible_evolutions(self) -> None:
+        tracker = WeaponEvolutionTracker()
+        first = tracker.check_for_new(
+            weapon_id="bubble_wand",
+            acquired_tags=("bubble_multi", "bubble_speed"),
+        )
+        second = tracker.check_for_new(
+            weapon_id="bubble_wand",
+            acquired_tags=("bubble_multi", "bubble_speed", "bubble_sticky", "bubble_duration"),
+        )
+        self.assertEqual(len(first), 1)
+        self.assertEqual(len(second), 1)
+        self.assertEqual(first[0].result_form_id, "bubble_storm")
+        self.assertEqual(second[0].result_form_id, "sticky_foam_field")
+
+    def test_tracker_allows_kazoo_beam_to_gain_additional_compatible_evolutions(self) -> None:
+        tracker = WeaponEvolutionTracker()
+        first = tracker.check_for_new(
+            weapon_id="kazoo_beam",
+            acquired_tags=("kazoo_power", "kazoo_duration"),
+        )
+        second = tracker.check_for_new(
+            weapon_id="kazoo_beam",
+            acquired_tags=("kazoo_power", "kazoo_duration", "kazoo_speed", "kazoo_width"),
+        )
+        self.assertEqual(len(first), 1)
+        self.assertEqual(len(second), 1)
 
     def test_game_session_upgrade_apply_runs_evolution_check(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -313,6 +355,41 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         snapshot = session.weapon_evolution_snapshot()
         forms = snapshot["active_forms_by_weapon"]
         self.assertEqual(forms.get("sparkler"), "wide_arc_sparkler")
+
+    def test_game_session_bubble_wand_keeps_first_form_and_merges_new_behavior_ids(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        session.set_active_weapon("bubble_wand")
+        session.run_upgrades = RunUpgradeSystem(rng=random.Random(67))
+        session.run_upgrades.apply_choice("bubble_count_up", active_weapon_id="bubble_wand")
+        session.run_upgrades.apply_choice("bubble_speed_up", active_weapon_id="bubble_wand")
+        session._current_upgrade_choices = [  # noqa: SLF001
+            UpgradeDefinition(
+                id="move_speed_up",
+                name="Quick Feet",
+                description="+Move speed.",
+                category="player",
+                effect_values={},
+            )
+        ]
+        self.assertTrue(session.apply_upgrade_choice_by_index(0))
+        session.run_upgrades.apply_choice("bubble_sticky_up", active_weapon_id="bubble_wand")
+        session.run_upgrades.apply_choice("bubble_duration_up", active_weapon_id="bubble_wand")
+        session._current_upgrade_choices = [  # noqa: SLF001
+            UpgradeDefinition(
+                id="score_bonus",
+                name="Spotlight Bonus",
+                description="+Score from defeats.",
+                category="economy",
+                effect_values={},
+            )
+        ]
+        self.assertTrue(session.apply_upgrade_choice_by_index(0))
+        snapshot = session.weapon_evolution_snapshot()
+        forms = snapshot["active_forms_by_weapon"]
+        behavior_ids = set(snapshot["active_behavior_ids_by_weapon"].get("bubble_wand", ()))
+        self.assertEqual(forms.get("bubble_wand"), "bubble_storm")
+        self.assertIn("bubble_storm", behavior_ids)
+        self.assertIn("sticky_foam_field", behavior_ids)
 
     def test_game_session_upgrade_choice_previews_flag_evolution_paths(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -498,7 +575,7 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         definitions = [item for item in list_weapon_evolutions() if item.weapon_id == "sparkler"]
         self.assertGreaterEqual(len(definitions), 5)
 
-    def test_mixed_build_validation_keeps_one_active_form_per_weapon(self) -> None:
+    def test_mixed_build_validation_supports_multi_evolution_tracking_for_bottle_and_sparkler(self) -> None:
         bottle_tracker = WeaponEvolutionTracker()
         sparkler_tracker = WeaponEvolutionTracker()
 
@@ -522,7 +599,44 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         self.assertEqual(len(bottle_first), 1)
         self.assertEqual(len(bottle_second), 1)
         self.assertEqual(len(sparkler_first), 1)
-        self.assertEqual(sparkler_second, [])
+        self.assertEqual(len(sparkler_second), 1)
+
+    def test_game_session_sparkler_merge_keeps_primary_form_and_accumulates_behaviors(self) -> None:
+        session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
+        session.set_active_weapon("sparkler")
+        session.run_upgrades = RunUpgradeSystem(rng=random.Random(151))
+        session.run_upgrades.apply_choice("sparkler_range_up", active_weapon_id="sparkler")
+        session.run_upgrades.apply_choice("fire_rate_up", active_weapon_id="sparkler")
+        session._current_upgrade_choices = [  # noqa: SLF001
+            UpgradeDefinition(
+                id="move_speed_up",
+                name="Quick Feet",
+                description="+Move speed.",
+                category="player",
+                effect_values={},
+            )
+        ]
+        self.assertTrue(session.apply_upgrade_choice_by_index(0))
+        first_snapshot = session.weapon_evolution_snapshot()
+        self.assertEqual(first_snapshot["active_forms_by_weapon"].get("sparkler"), "wide_arc_sparkler")
+
+        session.run_upgrades.apply_choice("sparkler_arc_up", active_weapon_id="sparkler")
+        session._current_upgrade_choices = [  # noqa: SLF001
+            UpgradeDefinition(
+                id="sparkler_duration_up",
+                name="Long Burn",
+                description="+Sparkler persistence and evolution setup.",
+                category="weapon",
+                effect_values={"sparkler_duration_bonus_seconds": 0.3},
+                tags=("sparkler_persistence",),
+            )
+        ]
+        self.assertTrue(session.apply_upgrade_choice_by_index(0))
+        merged_snapshot = session.weapon_evolution_snapshot()
+        self.assertEqual(merged_snapshot["active_forms_by_weapon"].get("sparkler"), "wide_arc_sparkler")
+        behavior_ids = set(merged_snapshot["active_behavior_ids_by_weapon"].get("sparkler", ()))
+        self.assertIn("wide_arc_sparkler", behavior_ids)
+        self.assertGreaterEqual(len(behavior_ids), 2)
 
     def test_evolution_trigger_emits_feedback_audio_cue(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
@@ -876,7 +990,7 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         session._check_projectile_collisions()
         self.assertEqual(len(session.projectiles), 0)
 
-    def test_spark_aura_replaces_swing_and_ticks_radial_damage(self) -> None:
+    def test_spark_aura_keeps_swing_and_ticks_radial_damage(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
         session.set_active_weapon("sparkler")
         session._weapon_evolution_forms["sparkler"] = "spark_aura"  # noqa: SLF001
@@ -889,7 +1003,15 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         session.hazards = [enemy]
 
         session.fire_projectile(pygame.Vector2(1.0, 0.0))
-        self.assertEqual(session.sparkler_attack_snapshot(), {})
+        self.assertTrue(session.sparkler_attack_snapshot())
+        self.assertEqual(len(session.hazards), 0)
+
+        aura_enemy = BalloonEnemy(speed=0.0)
+        aura_enemy.position = pygame.Vector2(
+            session.player.rect.centerx + 70.0,
+            session.player.rect.centery,
+        )
+        session.hazards = [aura_enemy]
         self.assertEqual(len(session.hazards), 1)
 
         session.update_playing(session.SPARK_AURA_TICK_INTERVAL + 0.01, pygame.Vector2(0.0, 0.0), attack=False)
@@ -947,21 +1069,28 @@ class WeaponEvolutionValidationTests(unittest.TestCase):
         for distance in before_distances + after_distances:
             self.assertAlmostEqual(distance, session.ORBITING_SPARK_RADIUS, places=2)
 
-    def test_orbiting_sparklers_replace_swing_and_damage_on_contact(self) -> None:
+    def test_orbiting_sparklers_keep_swing_and_damage_on_contact(self) -> None:
         session = GameSession(pygame.Rect(0, 0, 1280, 720), hazard_count=0)
         session.set_active_weapon("sparkler")
         session._weapon_evolution_forms["sparkler"] = "orbiting_sparklers"  # noqa: SLF001
 
-        enemy = BalloonEnemy(speed=0.0)
-        enemy.position = pygame.Vector2(
+        front_enemy = BalloonEnemy(speed=0.0)
+        front_enemy.position = pygame.Vector2(
             session.player.rect.centerx + session.ORBITING_SPARK_RADIUS,
             session.player.rect.centery,
         )
-        session.hazards = [enemy]
+        session.hazards = [front_enemy]
 
         session.fire_projectile(pygame.Vector2(1.0, 0.0))
-        self.assertEqual(session.sparkler_attack_snapshot(), {})
-        self.assertEqual(len(session.hazards), 1)
+        self.assertTrue(session.sparkler_attack_snapshot())
+        self.assertLessEqual(len(session.hazards), 1)
+
+        orbit_enemy = BalloonEnemy(speed=0.0)
+        orbit_enemy.position = pygame.Vector2(
+            session.player.rect.centerx + session.ORBITING_SPARK_RADIUS,
+            session.player.rect.centery,
+        )
+        session.hazards = [orbit_enemy]
 
         session.update_playing(0.01, pygame.Vector2(0.0, 0.0), attack=False)
         self.assertEqual(len(session.hazards), 0)

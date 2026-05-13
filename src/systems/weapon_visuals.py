@@ -165,6 +165,66 @@ WEAPON_VISUAL_VARIANTS: dict[str, WeaponVisualVariantDefinition] = {
         vfx_hook_id="todo:sparkler_glow",
         trail_hook_id="todo:sparkler_spark_trail",
     ),
+    "yoyo:tier1": WeaponVisualVariantDefinition(
+        variant_id="tier1",
+        weapon_id="yoyo",
+        default_overlay_sprite="yoyo_tier1",
+        anchor_name="weapon_mount",
+        offsets_by_facing={
+            "right": (2.0, -8.0),
+            "left": (-2.0, -8.0),
+        },
+        scale=0.72,
+        draw_layer=1,
+        rotation_rule=WeaponVisualRotationRule(
+            idle_angle_degrees=-4.0,
+            moving_angle_degrees=-12.0,
+            mirror_angle_with_facing=True,
+            flip_with_facing=False,
+        ),
+        vfx_hook_id="todo:yoyo_string",
+        trail_hook_id="todo:yoyo_spin_trail",
+    ),
+    "bubble_wand:tier1": WeaponVisualVariantDefinition(
+        variant_id="tier1",
+        weapon_id="bubble_wand",
+        default_overlay_sprite="bubble_wand_tier1_placeholder",
+        anchor_name="weapon_mount",
+        offsets_by_facing={
+            "right": (2.0, -6.0),
+            "left": (-2.0, -6.0),
+        },
+        scale=0.68,
+        draw_layer=1,
+        rotation_rule=WeaponVisualRotationRule(
+            idle_angle_degrees=-8.0,
+            moving_angle_degrees=-14.0,
+            mirror_angle_with_facing=True,
+            flip_with_facing=True,
+        ),
+        vfx_hook_id="todo:bubble_shimmer",
+        trail_hook_id="todo:bubble_trail",
+    ),
+    "kazoo_beam:tier1": WeaponVisualVariantDefinition(
+        variant_id="tier1",
+        weapon_id="kazoo_beam",
+        default_overlay_sprite="kazoo_beam_tier1_placeholder",
+        anchor_name="weapon_mount",
+        offsets_by_facing={
+            "right": (3.0, -6.0),
+            "left": (-3.0, -6.0),
+        },
+        scale=0.72,
+        draw_layer=1,
+        rotation_rule=WeaponVisualRotationRule(
+            idle_angle_degrees=-10.0,
+            moving_angle_degrees=-16.0,
+            mirror_angle_with_facing=True,
+            flip_with_facing=True,
+        ),
+        vfx_hook_id="todo:kazoo_glow",
+        trail_hook_id="todo:kazoo_beam_trail",
+    ),
 }
 
 WEAPON_VISUAL_VARIANT_RULES: dict[str, tuple[WeaponVisualVariantRule, ...]] = {
@@ -174,6 +234,15 @@ WEAPON_VISUAL_VARIANT_RULES: dict[str, tuple[WeaponVisualVariantRule, ...]] = {
         WeaponVisualVariantRule(variant_id="tier1", min_evolution_count=0),
     ),
     "sparkler": (
+        WeaponVisualVariantRule(variant_id="tier1", min_evolution_count=0),
+    ),
+    "yoyo": (
+        WeaponVisualVariantRule(variant_id="tier1", min_evolution_count=0),
+    ),
+    "bubble_wand": (
+        WeaponVisualVariantRule(variant_id="tier1", min_evolution_count=0),
+    ),
+    "kazoo_beam": (
         WeaponVisualVariantRule(variant_id="tier1", min_evolution_count=0),
     ),
 }

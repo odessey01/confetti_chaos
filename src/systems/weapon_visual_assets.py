@@ -28,6 +28,21 @@ WEAPON_VISUAL_ASSETS: dict[str, WeaponVisualAssetDefinition] = {
         # Pivot is near the stick/body junction so the rocket mounts cleanly later.
         pivot=(18, 32),
     ),
+    "yoyo_tier1": WeaponVisualAssetDefinition(
+        asset_id="yoyo_tier1",
+        sprite_path="images/weapons/yoyo/tier1.png",
+        pivot=(16, 16),
+    ),
+    "bubble_wand_tier1_placeholder": WeaponVisualAssetDefinition(
+        asset_id="bubble_wand_tier1_placeholder",
+        sprite_path="images/weapons/bubble_wand/tier1.png",
+        pivot=(14, 18),
+    ),
+    "kazoo_beam_tier1_placeholder": WeaponVisualAssetDefinition(
+        asset_id="kazoo_beam_tier1_placeholder",
+        sprite_path="images/weapons/kazoo_beam/tier1.png",
+        pivot=(14, 18),
+    ),
 }
 
 

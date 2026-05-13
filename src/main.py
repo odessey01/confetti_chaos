@@ -22,6 +22,7 @@ from systems import (
     MIN_START_LEVEL,
     assets_dir,
     clamp_selected_start_level,
+    create_leaderboard_service,
     get_character_unlock_condition,
     get_character_passive,
     load_high_score,
@@ -53,10 +54,12 @@ START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Toggle Aim 
 PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Toggle Aim Assist", "Quit to Menu")
 PLAYER_SELECT_NOTES = {
     "teddy_f": "",
-    "bunny_f": "Soft hopper",
+    "bunny_f": "",
     "fox_f": "Clever plush",
     "cat_f": "Cozy cat",
 }
+PLAYER_SELECT_CHARACTER_IDS = ("teddy_f", "bunny_f")
+PLAYER_SELECT_WEAPON_IDS = ("bottle_rocket", "sparkler", "yoyo", "bubble_wand", "kazoo_beam")
 
 
 class GameState(str, Enum):
@@ -334,6 +337,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     assets_dir().mkdir(parents=True, exist_ok=True)
     saves_dir()
     high_score = load_high_score()
+    leaderboard_service = create_leaderboard_service()
+    leaderboard_snapshot = leaderboard_service.snapshot(limit=3)
 
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -358,9 +363,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     demo_mode_enabled = demo_mode_enabled_from_runtime(argv=resolved_argv)
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
-    all_player_select_ids: tuple[str, ...] = (
-        PLAYABLE_PARTY_ANIMAL_IDS if PLAYABLE_PARTY_ANIMAL_IDS else ("teddy_f",)
-    )
+    all_player_select_ids: tuple[str, ...] = tuple(
+        variant_id for variant_id in PLAYABLE_PARTY_ANIMAL_IDS if variant_id in PLAYER_SELECT_CHARACTER_IDS
+    ) or ("teddy_f",)
     player_select_ids: tuple[str, ...] = tuple(
         variant_id
         for variant_id in all_player_select_ids
@@ -483,7 +488,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     audio.play_sfx("ui_back")
                     state = transition_state(state, GameState.MENU)
                 elif state == GameState.PLAYER_SELECT and input_controller.is_weapon_toggle(event):
-                    selected_weapon_id = "sparkler" if selected_weapon_id == "bottle_rocket" else "bottle_rocket"
+                    current_index = PLAYER_SELECT_WEAPON_IDS.index(selected_weapon_id) if selected_weapon_id in PLAYER_SELECT_WEAPON_IDS else 0
+                    selected_weapon_id = PLAYER_SELECT_WEAPON_IDS[(current_index + 1) % len(PLAYER_SELECT_WEAPON_IDS)]
                     audio.play_sfx("ui_toggle_settings")
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_up(event):
                     pause_menu_index = next_pause_menu_index(pause_menu_index, -1)
@@ -579,6 +585,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if session.score_value > high_score:
                     high_score = session.score_value
                     save_high_score(high_score)
+                leaderboard_service.submit_score(session.score_value)
+                leaderboard_snapshot = leaderboard_service.snapshot(limit=3)
                 meta_progression.total_runs_completed = max(
                     0,
                     int(meta_progression.total_runs_completed) + 1,
@@ -664,6 +672,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 audio.play_sfx("weapon_fire")
             for _ in range(min(4, int(audio_cues["sparkler_hit_count"]))):
                 audio.play_sfx("balloon_hit")
+            for _ in range(min(4, int(audio_cues["yoyo_launch_count"]))):
+                audio.play_sfx("weapon_fire")
+            for _ in range(min(4, int(audio_cues["yoyo_hit_count"]))):
+                audio.play_sfx("balloon_hit")
+            for _ in range(min(4, int(audio_cues["yoyo_catch_count"]))):
+                audio.play_sfx("ui_nav")
             for _ in range(min(6, int(audio_cues["xp_pickup_count"]))):
                 audio.play_sfx("ui_nav")
             for _ in range(min(2, int(audio_cues["evolution_count"]))):
@@ -718,6 +732,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 runtime_settings.selected_start_level,
                 get_weapon_definition(selected_weapon_id).display_name,
             )
+            global_lines = tuple(
+                f"{index + 1}. {row.player_name}: {row.score}"
+                for index, row in enumerate(leaderboard_snapshot.global_top[:3])
+            )
+            if leaderboard_snapshot.steam_available:
+                friend_lines = tuple(
+                    f"{index + 1}. {row.player_name}: {row.score}"
+                    for index, row in enumerate(leaderboard_snapshot.friend_top[:3])
+                )
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Global Leaderboard",
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 480),
+                )
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Friends Leaderboard",
+                    lines=friend_lines if friend_lines else ("No friend scores yet",),
+                    top_left=(28, 578),
+                )
+            else:
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title="Local Leaderboard",
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 520),
+                )
         elif state == GameState.PLAYER_SELECT:
             selected_key = player_select_ids[player_select_index] if player_select_ids else "teddy_f"
             selected_variant_id = get_party_animal(selected_key).variant_id
@@ -758,7 +800,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 selected_note=selected_note,
                 passive_bonus=passive.passive_bonus,
                 passive_drawback=passive.passive_drawback,
-                passive_summary=("Tougher, Slower" if selected_variant_id == "teddy_f" else None),
+                passive_summary=(
+                    "Tougher, Slower"
+                    if selected_variant_id == "teddy_f"
+                    else "Faster, Squishier"
+                    if selected_variant_id == "bunny_f"
+                    else None
+                ),
                 selected_weapon_name=get_weapon_definition(selected_weapon_id).display_name,
                 selected_locked=selected_is_locked,
                 selected_unlock_hint=unlock_hint,
@@ -909,6 +957,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "- Press R or Space to Restart"
                 )
                 ui.draw_state_text(world_surface, label)
+                global_lines = tuple(
+                    f"{index + 1}. {row.player_name}: {row.score}"
+                    for index, row in enumerate(leaderboard_snapshot.global_top[:3])
+                )
+                leaderboard_title = "Global Leaderboard" if leaderboard_snapshot.steam_available else "Local Leaderboard"
+                ui.draw_leaderboard_summary(
+                    world_surface,
+                    title=leaderboard_title,
+                    lines=global_lines if global_lines else ("No scores yet",),
+                    top_left=(28, 520),
+                )
 
         visual_feedback.draw_overlays(world_surface)
         if unlock_notification_timer > 0.0 and unlock_notification_text:

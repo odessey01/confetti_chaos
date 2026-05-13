@@ -97,10 +97,124 @@ WEAPON_EVOLUTION_DEFINITIONS: tuple[WeaponEvolutionDefinition, ...] = (
         description="Sparkler emits a pulsing ember ring around the player.",
         required_weapon_level=3,
     ),
+    WeaponEvolutionDefinition(
+        evolution_id="hyper_yoyo",
+        weapon_id="yoyo",
+        required_tags=("yoyo_speed", "yoyo_power"),
+        result_form_id="hyper_yoyo",
+        description="Yo-Yo hits harder and reels with extra momentum.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="twin_yoyos",
+        weapon_id="yoyo",
+        required_tags=("yoyo_multi", "yoyo_speed"),
+        result_form_id="twin_yoyos",
+        description="Deploys multiple Yo-Yos in quick succession.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="orbit_yoyo_storm",
+        weapon_id="yoyo",
+        required_tags=("yoyo_orbit", "yoyo_speed"),
+        result_form_id="orbit_yoyo_storm",
+        description="Yo-Yo transitions into an orbiting storm form.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="chain_yoyo",
+        weapon_id="yoyo",
+        required_tags=("yoyo_range", "yoyo_power"),
+        result_form_id="chain_yoyo",
+        description="Yo-Yo chains through nearby targets before returning.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="bubble_storm",
+        weapon_id="bubble_wand",
+        required_tags=("bubble_multi", "bubble_speed"),
+        result_form_id="bubble_storm",
+        description="Bubble Wand fires rapid drifting bubble clusters.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="sticky_foam_field",
+        weapon_id="bubble_wand",
+        required_tags=("bubble_sticky", "bubble_duration"),
+        result_form_id="sticky_foam_field",
+        description="Popped bubbles leave lingering sticky foam zones.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="giant_bubble",
+        weapon_id="bubble_wand",
+        required_tags=("bubble_size", "bubble_power"),
+        result_form_id="giant_bubble",
+        description="Bubble Wand emits giant bubbles with larger pop control.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="bubble_bounce",
+        weapon_id="bubble_wand",
+        required_tags=("bubble_speed", "bubble_size"),
+        result_form_id="bubble_bounce",
+        description="Bubbles ricochet off the arena before popping.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="soap_cyclone",
+        weapon_id="bubble_wand",
+        required_tags=("bubble_multi", "bubble_sticky"),
+        result_form_id="soap_cyclone",
+        description="Bubbles spiral around the player as a sticky cyclone.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="rainbow_resonance",
+        weapon_id="kazoo_beam",
+        required_tags=("kazoo_power", "kazoo_duration"),
+        result_form_id="rainbow_resonance",
+        description="Kazoo beam grows thicker and more resonant.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="sonic_squeal",
+        weapon_id="kazoo_beam",
+        required_tags=("kazoo_speed", "kazoo_width"),
+        result_form_id="sonic_squeal",
+        description="Kazoo beam pulses faster as a shock beam.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="feedback_loop",
+        weapon_id="kazoo_beam",
+        required_tags=("kazoo_chain", "kazoo_power"),
+        result_form_id="feedback_loop",
+        description="Kazoo beam chains damage to nearby targets.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="party_laser",
+        weapon_id="kazoo_beam",
+        required_tags=("kazoo_range", "kazoo_power"),
+        result_form_id="party_laser",
+        description="Kazoo beam becomes a long precision laser.",
+        required_weapon_level=3,
+    ),
+    WeaponEvolutionDefinition(
+        evolution_id="disco_sweep",
+        weapon_id="kazoo_beam",
+        required_tags=("kazoo_duration", "kazoo_width"),
+        result_form_id="disco_sweep",
+        description="Kazoo beam sweeps in a rotating disco arc.",
+        required_weapon_level=3,
+    ),
 )
 
 _EVOLUTION_BY_ID = {definition.evolution_id: definition for definition in WEAPON_EVOLUTION_DEFINITIONS}
-COMPATIBLE_MULTI_EVOLUTION_WEAPONS: frozenset[str] = frozenset({"bottle_rocket"})
+COMPATIBLE_MULTI_EVOLUTION_WEAPONS: frozenset[str] = frozenset(
+    {"bottle_rocket", "sparkler", "bubble_wand", "kazoo_beam"}
+)
 
 
 def list_weapon_evolutions() -> tuple[WeaponEvolutionDefinition, ...]:

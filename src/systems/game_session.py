@@ -18,7 +18,7 @@ from enemies import (
     StreamerSnake,
 )
 from pickups import LollipopDrop, XpDrop
-from player import BottleRocket, BottleRocketFlightProfile, Player
+from player import BottleRocket, BottleRocketFlightProfile, BubbleProjectile, Player, YoyoProjectile
 from .aim_assist import AimAssistConfig, AimAssistSystem
 from .character_passives import CharacterPassiveProfile, get_character_passive
 from .character_supers import CharacterSuperProfile, get_character_super
@@ -81,6 +81,7 @@ class GameSession:
     SPARKLER_SWEEP_CONE_DEGREES = 82.0
     SPARKLER_ARC_INNER_RADIUS_RATIO = 0.24
     SPARKLER_SWEEP_DURATION = 0.08
+    SPARKLER_SWEEP_TRAIL_DEGREES = 28.0
     ORBITING_SPARK_COUNT = 3
     ORBITING_SPARK_RADIUS = 98.0
     ORBITING_SPARK_CONTACT_RADIUS = 20.0
@@ -89,9 +90,35 @@ class GameSession:
     ORBITING_SPARK_CONTACT_COOLDOWN = 0.2
     ORBITING_SPARK_TRAIL_STEPS = 4
     ORBITING_SPARK_TRAIL_ANGLE_STEP = 12.0
+    ORBITING_YOYO_COUNT = 2
+    ORBITING_YOYO_RADIUS = 118.0
+    ORBITING_YOYO_CONTACT_RADIUS = 24.0
+    ORBITING_YOYO_DAMAGE = 1
+    ORBITING_YOYO_ROTATION_DEGREES_PER_SECOND = 180.0
+    ORBITING_YOYO_CONTACT_COOLDOWN = 0.26
     SPARK_AURA_RADIUS = 128.0
     SPARK_AURA_TICK_INTERVAL = 0.3
     SPARK_AURA_DAMAGE = 1
+    BUBBLE_WAND_LIFETIME = 1.9
+    BUBBLE_WAND_SPEED = 170.0
+    BUBBLE_WAND_SIZE = 18
+    BUBBLE_WAND_POP_RADIUS = 42.0
+    BUBBLE_WAND_SLOW_MULTIPLIER = 0.72
+    BUBBLE_WAND_SLOW_DURATION = 1.15
+    BUBBLE_WAND_FOAM_RADIUS = 56.0
+    BUBBLE_WAND_FOAM_DURATION = 2.0
+    BUBBLE_WAND_FOAM_TICK = 0.35
+    BUBBLE_WAND_ORBIT_COUNT = 3
+    BUBBLE_WAND_ORBIT_RADIUS = 116.0
+    BUBBLE_WAND_ORBIT_CONTACT_RADIUS = 24.0
+    BUBBLE_WAND_ORBIT_DAMAGE = 1
+    BUBBLE_WAND_ORBIT_SPEED_DEGREES = 160.0
+    KAZOO_BEAM_BASE_DURATION = 0.45
+    KAZOO_BEAM_BASE_WIDTH = 22.0
+    KAZOO_BEAM_TICK_INTERVAL = 0.16
+    KAZOO_BEAM_CHAIN_RADIUS = 120.0
+    KAZOO_BEAM_SWEEP_ANGLE = 44.0
+    KAZOO_BEAM_SWEEP_SPEED = 2.1
     MAX_ACTIVE_ENEMY_SPRAYS = 48
     SPRAYER_PROJECTILE_LIFETIME = 0.58
     SPRAYER_PROJECTILE_SIZE = 9
@@ -142,6 +169,9 @@ class GameSession:
     BEAR_ROAR_BOSS_CHIP_DAMAGE = 1
     RACCOON_CHAOS_DROP_XP_BONUS = 16
     RACCOON_CHAOS_DROP_SCORE_BONUS = 120
+    MULTI_EVOLUTION_WEAPON_IDS = frozenset({"bottle_rocket", "sparkler", "bubble_wand", "kazoo_beam"})
+    YOYO_TETHER_COLOR = (255, 210, 236)
+    YOYO_TETHER_WIDTH = 2
 
     def __init__(self, bounds: pygame.Rect, hazard_count: int = 1) -> None:
         self.bounds = bounds
@@ -149,7 +179,7 @@ class GameSession:
         self.spawn_controller = SpawnController(bounds, initial_hazards=hazard_count)
         self.player: Player
         self.hazards: list[Hazard]
-        self.projectiles: list[BottleRocket]
+        self.projectiles: list[BottleRocket | YoyoProjectile | BubbleProjectile]
         self.enemy_sprays: list[ConfettiSpray]
         self.xp_drops: list[XpDrop]
         self.health_drops: list[LollipopDrop]
@@ -172,6 +202,17 @@ class GameSession:
         self._sparkler_swing_count = 0
         self._orbiting_spark_angle_degrees = 0.0
         self._orbiting_spark_contact_cooldowns: dict[int, float] = {}
+        self._orbiting_yoyo_angle_degrees = 0.0
+        self._orbiting_yoyo_contact_cooldowns: dict[int, float] = {}
+        self._orbiting_bubble_angle_degrees = 0.0
+        self._orbiting_bubble_contact_cooldowns: dict[int, float] = {}
+        self._hazard_slow_timers: dict[int, tuple[float, float]] = {}
+        self._foam_zones: list[dict[str, float | pygame.Vector2]] = []
+        self._kazoo_beam_active = False
+        self._kazoo_beam_remaining = 0.0
+        self._kazoo_beam_direction = pygame.Vector2(1.0, 0.0)
+        self._kazoo_beam_tick_timer = 0.0
+        self._kazoo_beam_elapsed = 0.0
         self._spark_aura_tick_timer = 0.0
         self._last_attack_direction = pygame.Vector2(1.0, 0.0)
         self.active_weapon_id = DEFAULT_WEAPON_ID
@@ -222,6 +263,9 @@ class GameSession:
         self._pending_bottle_rocket_impact_sfx_count = 0
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
+        self._pending_yoyo_launch_sfx_count = 0
+        self._pending_yoyo_hit_sfx_count = 0
+        self._pending_yoyo_catch_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
         self._pending_evolution_sfx_count = 0
         self._evolution_feedback_timer = 0.0
@@ -320,6 +364,9 @@ class GameSession:
         self._pending_bottle_rocket_impact_sfx_count = 0
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
+        self._pending_yoyo_launch_sfx_count = 0
+        self._pending_yoyo_hit_sfx_count = 0
+        self._pending_yoyo_catch_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
         self._pending_evolution_sfx_count = 0
         self._evolution_feedback_timer = 0.0
@@ -331,6 +378,17 @@ class GameSession:
         self._sparkler_swing_count = 0
         self._orbiting_spark_angle_degrees = 0.0
         self._orbiting_spark_contact_cooldowns = {}
+        self._orbiting_yoyo_angle_degrees = 0.0
+        self._orbiting_yoyo_contact_cooldowns = {}
+        self._orbiting_bubble_angle_degrees = 0.0
+        self._orbiting_bubble_contact_cooldowns = {}
+        self._hazard_slow_timers = {}
+        self._foam_zones = []
+        self._kazoo_beam_active = False
+        self._kazoo_beam_remaining = 0.0
+        self._kazoo_beam_direction = pygame.Vector2(1.0, 0.0)
+        self._kazoo_beam_tick_timer = 0.0
+        self._kazoo_beam_elapsed = 0.0
         self._spark_aura_tick_timer = 0.0
         self._last_attack_direction = pygame.Vector2(1.0, 0.0)
         # Configure initial hazard mix for level 1
@@ -388,17 +446,49 @@ class GameSession:
             self.confetti.spawn_burst(player_center, count=2, speed_min=80.0, speed_max=150.0, lifetime_min=0.2, lifetime_max=0.35)
             self._dodge_trail_timer = 0.04
         self._update_orbiting_sparks(delta_seconds)
+        self._update_orbiting_yoyos(delta_seconds)
+        self._update_orbiting_bubbles(delta_seconds)
         self._update_spark_aura(delta_seconds)
+        self._update_foam_zones(delta_seconds)
+        self._update_kazoo_beam(delta_seconds)
+        self._decay_hazard_slow_effects(delta_seconds)
         
         # Handle attack input
         if attack:
             self.fire_projectile(self.player.facing)
         
         # Update projectiles
-        active_projectiles: list[BottleRocket] = []
+        active_projectiles: list[BottleRocket | YoyoProjectile | BubbleProjectile] = []
         for projectile in self.projectiles:
+            if isinstance(projectile, YoyoProjectile):
+                projectile.update(
+                    delta_seconds,
+                    anchor=pygame.Vector2(self.player_weapon_anchor()),
+                )
+                if projectile.state == "complete":
+                    catch_center = pygame.Vector2(self.player_weapon_anchor())
+                    self.confetti.spawn_burst(
+                        catch_center,
+                        count=4,
+                        speed_min=85.0,
+                        speed_max=155.0,
+                        lifetime_min=0.12,
+                        lifetime_max=0.22,
+                    )
+                    self._spawn_pulse_centers.append((int(catch_center.x), int(catch_center.y)))
+                    self._pending_yoyo_catch_sfx_count += 1
+                    continue
+                active_projectiles.append(projectile)
+                continue
             if bool(getattr(projectile, "is_sticky_attached", False)):
                 if self._update_delayed_blast_projectile(projectile, delta_seconds):
+                    continue
+                active_projectiles.append(projectile)
+                continue
+            if isinstance(projectile, BubbleProjectile):
+                projectile.update(delta_seconds, self.bounds)
+                if projectile.is_expired():
+                    self._pop_bubble_projectile(projectile, hit_hazard=None)
                     continue
                 active_projectiles.append(projectile)
                 continue
@@ -543,7 +633,8 @@ class GameSession:
 
         requested_burst_spawns = 0
         for hazard in self.hazards:
-            hazard.update(delta_seconds, player_center)
+            hazard_dt = self._hazard_delta_seconds(hazard, delta_seconds)
+            hazard.update(hazard_dt, player_center)
             if isinstance(hazard, BossBalloon):
                 cues = hazard.consume_ability_cues()
                 requested_burst_spawns += int(cues["burst_spawn_count"])
@@ -631,6 +722,10 @@ class GameSession:
             "base_damage": int(weapon.base_damage),
             "effective_range": float(weapon.effective_range),
             "attack_cooldown_seconds": float(weapon.attack_cooldown_seconds),
+            "travel_speed": float(weapon.travel_speed),
+            "return_speed": float(weapon.return_speed),
+            "active_cap": int(weapon.active_cap),
+            "per_enemy_hit_cooldown": float(weapon.per_enemy_hit_cooldown),
         }
 
     def fire_active_weapon(self, direction: pygame.Vector2) -> None:
@@ -638,7 +733,88 @@ class GameSession:
         if weapon.weapon_id == "sparkler":
             self.fire_sparkler(direction)
             return
+        if weapon.weapon_id == "yoyo":
+            self.fire_yoyo(direction)
+            return
+        if weapon.weapon_id == "bubble_wand":
+            self.fire_bubble_wand(direction)
+            return
+        if weapon.weapon_id == "kazoo_beam":
+            self.fire_kazoo_beam(direction)
+            return
         self.fire_bottle_rocket(direction)
+
+    def kazoo_beam_snapshot(self) -> dict[str, object]:
+        return {
+            "active": bool(self._kazoo_beam_active),
+            "remaining": float(self._kazoo_beam_remaining),
+            "direction": (float(self._kazoo_beam_direction.x), float(self._kazoo_beam_direction.y)),
+            "elapsed": float(self._kazoo_beam_elapsed),
+        }
+
+    def fire_yoyo(self, direction: pygame.Vector2) -> None:
+        if self._weapon_cooldown_timer > 0.0:
+            return
+        weapon = self._active_weapon_definition
+        if self._weapon_has_behavior("yoyo", "orbit_yoyo_storm"):
+            # Orbit form is persistent and does not deploy a standard outward-return projectile.
+            return
+        active_yoyos = [
+            item
+            for item in self.projectiles
+            if isinstance(item, YoyoProjectile) and item.state != "complete"
+        ]
+        if len(active_yoyos) >= max(1, int(self.max_active_projectiles)):
+            return
+        effects = self.run_upgrades.effects_snapshot()
+        fire_rate_mult = max(0.0, effects.get("fire_rate_mult", 0.0))
+        self._weapon_cooldown_timer = max(
+            0.08,
+            float(weapon.attack_cooldown_seconds) * max(0.2, 1.0 - fire_rate_mult),
+        )
+        anchor = pygame.Vector2(self.player_weapon_anchor())
+        resolved_direction = self._resolve_sparkler_attack_direction(pygame.Vector2(direction))
+        self._last_attack_direction = pygame.Vector2(resolved_direction)
+        behavior_ids = self._weapon_behavior_ids("yoyo")
+        speed_bonus = max(0.0, float(effects.get("yoyo_speed_bonus", 0.0)))
+        if "hyper_yoyo" in behavior_ids:
+            speed_bonus += 38.0
+        yoyo = YoyoProjectile(
+            origin=anchor,
+            direction=resolved_direction,
+            max_distance=max(
+                36.0,
+                float(weapon.effective_range)
+                + max(0.0, float(effects.get("yoyo_range_bonus", 0.0))),
+            ),
+            travel_speed=max(
+                80.0,
+                float(weapon.travel_speed)
+                + speed_bonus,
+            ),
+            return_speed=max(
+                100.0,
+                float(weapon.return_speed)
+                + (speed_bonus * 0.6),
+            ),
+            damage=max(
+                1,
+                int(
+                    weapon.base_damage
+                    + max(0.0, float(effects.get("yoyo_damage_bonus", 0.0)))
+                    + (1 if "hyper_yoyo" in behavior_ids else 0)
+                ),
+            ),
+            hit_cooldown_seconds=max(0.05, float(weapon.per_enemy_hit_cooldown)),
+            hover_pause_seconds=max(0.0, float(weapon.hover_pause_seconds)),
+        )
+        evolution_form_id = self._active_weapon_form_id("yoyo")
+        if evolution_form_id is not None:
+            setattr(yoyo, "evolution_form_id", evolution_form_id)
+        if behavior_ids:
+            setattr(yoyo, "evolution_behavior_ids", tuple(sorted(behavior_ids)))
+        self.projectiles.append(yoyo)
+        self._pending_yoyo_launch_sfx_count += 1
 
     def fire_bottle_rocket(self, direction: pygame.Vector2) -> None:
         """Fire a bottle rocket in the given direction from the player center."""
@@ -694,6 +870,79 @@ class GameSession:
         self._pending_bottle_rocket_launch_sfx_count += 1
         self._apply_bottle_rocket_recoil(resolved_direction)
 
+    def fire_bubble_wand(self, direction: pygame.Vector2) -> None:
+        if self._weapon_cooldown_timer > 0.0:
+            return
+        weapon = self._active_weapon_definition
+        effects = self.run_upgrades.effects_snapshot()
+        fire_rate_mult = max(0.0, float(effects.get("fire_rate_mult", 0.0)))
+        cooldown = max(0.14, float(weapon.attack_cooldown_seconds) * max(0.3, 1.0 - fire_rate_mult))
+        self._weapon_cooldown_timer = cooldown
+        active_bubbles = [item for item in self.projectiles if isinstance(item, BubbleProjectile)]
+        behavior_ids = self._weapon_behavior_ids("bubble_wand")
+        cap_bonus = max(0, int(effects.get("bubble_active_cap_bonus", 0.0)))
+        multi_bonus = 1 if "bubble_storm" in behavior_ids else 0
+        allowed_cap = max(1, int(weapon.active_cap) + cap_bonus + multi_bonus)
+        bubbles_to_spawn = min(3, max(0, allowed_cap - len(active_bubbles)))
+        if bubbles_to_spawn <= 0:
+            return
+        anchor = pygame.Vector2(self.player_weapon_anchor())
+        base_dir = self._resolve_sparkler_attack_direction(pygame.Vector2(direction))
+        speed = max(45.0, self.BUBBLE_WAND_SPEED + float(effects.get("bubble_speed_bonus", 0.0)))
+        size = int(self.BUBBLE_WAND_SIZE + float(effects.get("bubble_size_bonus", 0.0)))
+        lifetime = max(0.5, self.BUBBLE_WAND_LIFETIME + float(effects.get("bubble_lifetime_bonus", 0.0)))
+        damage = max(1, int(weapon.base_damage + float(effects.get("bubble_damage_bonus", 0.0))))
+        pop_radius = max(16.0, self.BUBBLE_WAND_POP_RADIUS + float(effects.get("bubble_pop_radius_bonus", 0.0)))
+        mode = self._current_bubble_mode()
+        bounce_limit = 2 if mode == "bouncing" else 0
+        spread_angles = (0.0,) if bubbles_to_spawn == 1 else (-12.0, 0.0, 12.0)
+        for angle in spread_angles[:bubbles_to_spawn]:
+            fired_direction = base_dir.rotate(angle)
+            projectile = BubbleProjectile(
+                position=anchor + (fired_direction * 12.0),
+                direction=fired_direction,
+                speed=speed,
+                lifetime=lifetime,
+                size=size,
+                damage=damage,
+                pop_radius=pop_radius,
+                mode=mode,
+                wobble_strength=0.28 if mode in {"wobble", "rising", "bouncing"} else 0.0,
+                rise_per_second=11.0 if mode in {"wobble", "rising"} else 0.0,
+                bounce_limit=bounce_limit,
+            )
+            self.projectiles.append(projectile)
+        self._last_attack_direction = pygame.Vector2(base_dir)
+        self._pending_bottle_rocket_launch_sfx_count += 1
+
+    def fire_kazoo_beam(self, direction: pygame.Vector2) -> None:
+        if self._weapon_cooldown_timer > 0.0 or self._kazoo_beam_active:
+            return
+        weapon = self._active_weapon_definition
+        effects = self.run_upgrades.effects_snapshot()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        fire_rate_mult = max(0.0, float(effects.get("fire_rate_mult", 0.0)))
+        speed_bonus = max(0.0, float(effects.get("kazoo_cooldown_reduction", 0.0)))
+        total_cooldown_mult = max(0.2, 1.0 - fire_rate_mult - speed_bonus)
+        self._weapon_cooldown_timer = max(0.12, float(weapon.attack_cooldown_seconds) * total_cooldown_mult)
+        duration = self.KAZOO_BEAM_BASE_DURATION + max(0.0, float(effects.get("kazoo_duration_bonus", 0.0)))
+        if "rainbow_resonance" in behavior_ids:
+            duration += 0.08
+        if "disco_sweep" in behavior_ids:
+            duration += 0.18
+        duration = max(0.2, duration)
+        if pygame.Vector2(direction).length_squared() > 0.0:
+            beam_direction = self._resolve_sparkler_attack_direction(pygame.Vector2(direction))
+        else:
+            beam_direction = self._kazoo_target_direction()
+        self._kazoo_beam_active = True
+        self._kazoo_beam_remaining = duration
+        self._kazoo_beam_elapsed = 0.0
+        self._kazoo_beam_direction = pygame.Vector2(beam_direction)
+        self._kazoo_beam_tick_timer = 0.0
+        self._last_attack_direction = pygame.Vector2(beam_direction)
+        self._pending_sparkler_swing_sfx_count += 1
+
     def fire_sparkler(self, direction: pygame.Vector2) -> None:
         """Temporary sparkler melee hook for weapon-system foundation."""
         if self._weapon_cooldown_timer > 0.0:
@@ -710,8 +959,6 @@ class GameSession:
         cone_bonus = max(0.0, effects.get("sparkler_cone_bonus_degrees", 0.0))
         damage_bonus = max(0, int(effects.get("sparkler_damage_bonus", 0.0)))
         evolution_form_id = self._active_weapon_form_id("sparkler")
-        if evolution_form_id in ("orbiting_sparklers", "spark_aura"):
-            return
         attack_range = max(
             24.0,
             float(weapon.effective_range) + float(profile.range_bonus) + float(attack_range_bonus),
@@ -742,6 +989,8 @@ class GameSession:
             "cone_degrees": float(swing["cone_degrees"]),
             "range": float(swing["range"]),
             "inner_range": float(swing["inner_range"]),
+            "sweep_start_degrees": float(swing["sweep_start_degrees"]),
+            "sweep_end_degrees": float(swing["sweep_end_degrees"]),
             "tip_left": swing["tip_left"],
             "tip_right": swing["tip_right"],
             "expires_in": self.SPARKLER_SWEEP_DURATION,
@@ -955,7 +1204,7 @@ class GameSession:
         if self.active_weapon_id != "sparkler":
             self._spark_aura_tick_timer = 0.0
             return
-        if self._active_weapon_form_id("sparkler") != "spark_aura":
+        if not self._weapon_has_behavior("sparkler", "spark_aura"):
             self._spark_aura_tick_timer = 0.0
             return
         self._spark_aura_tick_timer += max(0.0, float(delta_seconds))
@@ -967,7 +1216,7 @@ class GameSession:
         if self.active_weapon_id != "sparkler":
             self._orbiting_spark_contact_cooldowns.clear()
             return
-        if self._active_weapon_form_id("sparkler") != "orbiting_sparklers":
+        if not self._weapon_has_behavior("sparkler", "orbiting_sparklers"):
             self._orbiting_spark_contact_cooldowns.clear()
             return
         self._orbiting_spark_angle_degrees = (
@@ -980,6 +1229,101 @@ class GameSession:
             if cooldown > max(0.0, float(delta_seconds))
         }
         self._apply_orbiting_spark_contacts()
+
+    def _update_orbiting_yoyos(self, delta_seconds: float) -> None:
+        if self.active_weapon_id != "yoyo":
+            self._orbiting_yoyo_contact_cooldowns.clear()
+            return
+        if not self._weapon_has_behavior("yoyo", "orbit_yoyo_storm"):
+            self._orbiting_yoyo_contact_cooldowns.clear()
+            return
+        self._orbiting_yoyo_angle_degrees = (
+            self._orbiting_yoyo_angle_degrees
+            + (self.ORBITING_YOYO_ROTATION_DEGREES_PER_SECOND * max(0.0, float(delta_seconds)))
+        ) % 360.0
+        self._orbiting_yoyo_contact_cooldowns = {
+            hazard_id: max(0.0, cooldown - max(0.0, float(delta_seconds)))
+            for hazard_id, cooldown in self._orbiting_yoyo_contact_cooldowns.items()
+            if cooldown > max(0.0, float(delta_seconds))
+        }
+        self._apply_orbiting_yoyo_contacts()
+
+    def _orbiting_yoyo_positions(self) -> tuple[pygame.Vector2, ...]:
+        center = pygame.Vector2(self.player.rect.center)
+        count = max(1, int(self.ORBITING_YOYO_COUNT))
+        step_degrees = 360.0 / count
+        return tuple(
+            center
+            + pygame.Vector2(self.ORBITING_YOYO_RADIUS, 0.0).rotate(
+                self._orbiting_yoyo_angle_degrees + (step_degrees * index)
+            )
+            for index in range(count)
+        )
+
+    def _apply_orbiting_yoyo_contacts(self) -> None:
+        yoyo_positions = self._orbiting_yoyo_positions()
+        hazards_to_remove: list[int] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+        super_charge_gained = 0
+        contacts = 0
+        for hazard_idx, hazard in enumerate(self.hazards):
+            hazard_id = id(hazard)
+            if self._orbiting_yoyo_contact_cooldowns.get(hazard_id, 0.0) > 0.0:
+                continue
+            if not any(
+                self._orbiting_spark_intersects_rect(position, hazard.rect, self.ORBITING_YOYO_CONTACT_RADIUS)
+                for position in yoyo_positions
+            ):
+                continue
+            contacts += 1
+            self._orbiting_yoyo_contact_cooldowns[hazard_id] = self.ORBITING_YOYO_CONTACT_COOLDOWN
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=self.ORBITING_YOYO_DAMAGE,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                    super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("boss_balloon")
+                continue
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=self.ORBITING_YOYO_DAMAGE,
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated and hazard_idx not in hazards_to_remove:
+                    hazards_to_remove.append(hazard_idx)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                continue
+            self._pending_balloon_hit_sfx_count += 1
+            if hazard_idx not in hazards_to_remove:
+                hazards_to_remove.append(hazard_idx)
+                hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                hazard_kill_kinds.append(str((hazard.spawn_profile or {}).get("enemy_kind", "balloon")))
+                self._pending_balloon_pop_sfx_count += 1
+        for idx in sorted(hazards_to_remove, reverse=True):
+            self._orbiting_yoyo_contact_cooldowns.pop(id(self.hazards[idx]), None)
+            self.hazards.pop(idx)
+        if hazard_kill_kinds:
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+            super_charge_gained += sum(self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds)
+        if super_charge_gained > 0:
+            self.add_super_charge(super_charge_gained)
+        if contacts > 0:
+            self._pending_balloon_hit_sfx_count += contacts
 
     def _orbiting_spark_positions(self) -> tuple[pygame.Vector2, ...]:
         center = pygame.Vector2(self.player.rect.center)
@@ -1283,6 +1627,8 @@ class GameSession:
             "range": outer_range,
             "inner_range": inner_range,
             "cone_degrees": float(cone_degrees),
+            "sweep_start_degrees": -half_cone,
+            "sweep_end_degrees": half_cone,
             "tip_left": tip_left,
             "tip_right": tip_right,
         }
@@ -1298,6 +1644,8 @@ class GameSession:
         cone_degrees = float(self._sparkler_attack_debug.get("cone_degrees", 0.0))
         outer_range = float(self._sparkler_attack_debug.get("range", 0.0))
         inner_range = float(self._sparkler_attack_debug.get("inner_range", 0.0))
+        sweep_start = float(self._sparkler_attack_debug.get("sweep_start_degrees", -(cone_degrees * 0.5)))
+        sweep_end = float(self._sparkler_attack_debug.get("sweep_end_degrees", (cone_degrees * 0.5)))
         if not isinstance(origin, pygame.Vector2):
             return
         if not isinstance(direction, pygame.Vector2):
@@ -1306,7 +1654,14 @@ class GameSession:
             return
         facing = direction.normalize()
 
-        strength = max(0.0, min(expires / self.SPARKLER_SWEEP_DURATION, 1.0))
+        life_fraction = max(0.0, min(expires / self.SPARKLER_SWEEP_DURATION, 1.0))
+        progress = 1.0 - life_fraction
+        # Move the swing head across the attack cone over the swing duration.
+        head_angle = sweep_start + ((sweep_end - sweep_start) * progress)
+        trail_span = max(8.0, min(self.SPARKLER_SWEEP_TRAIL_DEGREES, max(8.0, cone_degrees)))
+        trail_start = max(sweep_start, head_angle - trail_span)
+        trail_end = min(sweep_end, head_angle)
+        strength = max(0.0, min(0.25 + (life_fraction * 0.85), 1.0))
         glow_alpha = int(110 + (95 * strength))
         core_alpha = int(190 + (60 * strength))
         swing_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
@@ -1314,15 +1669,17 @@ class GameSession:
             origin=origin,
             direction=facing,
             radius=outer_range,
-            cone_degrees=cone_degrees,
-            segments=18,
+            cone_degrees=(trail_end - trail_start),
+            segments=10,
+            start_angle_degrees=trail_start,
         )
         inner_points = self._sparkler_arc_points(
             origin=origin,
             direction=facing,
             radius=max(2.0, inner_range),
-            cone_degrees=cone_degrees,
-            segments=18,
+            cone_degrees=(trail_end - trail_start),
+            segments=10,
+            start_angle_degrees=trail_start,
         )
         if len(outer_points) >= 2:
             pygame.draw.lines(
@@ -1345,6 +1702,13 @@ class GameSession:
                 False,
                 outer_points,
                 width=1,
+            )
+            swing_head = outer_points[-1]
+            pygame.draw.circle(
+                swing_surface,
+                (255, 247, 214, min(255, int(220 * strength))),
+                (int(swing_head[0]), int(swing_head[1])),
+                4,
             )
         if inner_range > 2.0 and len(inner_points) >= 2:
             pygame.draw.lines(
@@ -1406,13 +1770,20 @@ class GameSession:
         radius: float,
         cone_degrees: float,
         segments: int = 14,
+        start_angle_degrees: float | None = None,
     ) -> list[tuple[float, float]]:
-        half_cone = max(5.0, float(cone_degrees) * 0.5)
+        resolved_cone = max(1.0, float(cone_degrees))
         clamped_segments = max(4, int(segments))
-        step = (half_cone * 2.0) / float(clamped_segments)
+        if start_angle_degrees is None:
+            half_cone = max(5.0, resolved_cone * 0.5)
+            start_angle = -half_cone
+            step = (half_cone * 2.0) / float(clamped_segments)
+        else:
+            start_angle = float(start_angle_degrees)
+            step = resolved_cone / float(clamped_segments)
         points: list[tuple[float, float]] = []
         for index in range(clamped_segments + 1):
-            angle = -half_cone + (step * index)
+            angle = start_angle + (step * index)
             point = pygame.Vector2(origin) + (pygame.Vector2(direction).rotate(angle) * radius)
             points.append((point.x, point.y))
         return points
@@ -1516,7 +1887,7 @@ class GameSession:
             preview_evolutions = []
             allow_additional_evolution = (
                 self.active_weapon_id not in self._weapon_evolution_forms
-                or self.active_weapon_id == "bottle_rocket"
+                or self.active_weapon_id in self.MULTI_EVOLUTION_WEAPON_IDS
             )
             if allow_additional_evolution:
                 preview_evolutions = preview_weapon_evolutions_with_added_tags(
@@ -1559,7 +1930,7 @@ class GameSession:
         new_evolutions = []
         allow_additional_evolution = (
             self.active_weapon_id not in self._weapon_evolution_forms
-            or self.active_weapon_id == "bottle_rocket"
+            or self.active_weapon_id in self.MULTI_EVOLUTION_WEAPON_IDS
         )
         if allow_additional_evolution:
             new_evolutions = self._weapon_evolution_tracker.check_for_new(
@@ -1600,6 +1971,9 @@ class GameSession:
         if active_form_id:
             behavior_ids.add(active_form_id)
         return behavior_ids
+
+    def _weapon_has_behavior(self, weapon_id: str, behavior_id: str) -> bool:
+        return str(behavior_id) in self._weapon_behavior_ids(str(weapon_id))
 
     def _projectile_has_bottle_rocket_behavior(self, projectile: BottleRocket, behavior_id: str) -> bool:
         behavior_ids = {
@@ -1934,6 +2308,17 @@ class GameSession:
         super_charge_gained = 0
         
         for proj_idx, projectile in enumerate(self.projectiles):
+            if isinstance(projectile, YoyoProjectile):
+                self._apply_yoyo_projectile_hits(projectile)
+                continue
+            if isinstance(projectile, BubbleProjectile):
+                for hazard in self.hazards:
+                    if projectile.rect.colliderect(hazard.rect):
+                        self._pop_bubble_projectile(projectile, hit_hazard=hazard)
+                        if proj_idx not in projectiles_to_remove:
+                            projectiles_to_remove.append(proj_idx)
+                        break
+                continue
             if bool(getattr(projectile, "is_sticky_attached", False)):
                 continue
             for hazard_idx, hazard in enumerate(self.hazards):
@@ -2081,6 +2466,82 @@ class GameSession:
 
         return removed_hazard_count
 
+    def _apply_yoyo_projectile_hits(self, projectile: YoyoProjectile) -> None:
+        hazards_to_remove_ids: set[int] = set()
+        hazards_to_remove: list[object] = []
+        hazard_kill_positions: list[pygame.Vector2] = []
+        hazard_kill_kinds: list[str] = []
+        super_charge_gained = 0
+        for hazard in self.hazards:
+            if not projectile.rect.colliderect(hazard.rect):
+                continue
+            hazard_id = id(hazard)
+            if not projectile.can_hit_target(hazard_id):
+                continue
+            projectile.register_hit(hazard_id)
+            impact_center = pygame.Vector2(hazard.rect.center)
+            self.confetti.spawn_burst(
+                impact_center,
+                count=4,
+                speed_min=90.0,
+                speed_max=170.0,
+                lifetime_min=0.1,
+                lifetime_max=0.2,
+            )
+            self._pending_yoyo_hit_sfx_count += 1
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=int(getattr(projectile, "damage", 1)),
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                    super_charge_gained += hit_count * self.SUPER_CHARGE_PER_BOSS_HIT
+                if defeated and hazard_id not in hazards_to_remove_ids:
+                    hazards_to_remove_ids.add(hazard_id)
+                    hazards_to_remove.append(hazard)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("boss_balloon")
+                continue
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(
+                    hazard,
+                    projectile_damage=int(getattr(projectile, "damage", 1)),
+                )
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated and hazard_id not in hazards_to_remove_ids:
+                    hazards_to_remove_ids.add(hazard_id)
+                    hazards_to_remove.append(hazard)
+                    hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    hazard_kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                continue
+            self._pending_balloon_hit_sfx_count += 1
+            if hazard_id not in hazards_to_remove_ids:
+                hazards_to_remove_ids.add(hazard_id)
+                hazards_to_remove.append(hazard)
+                hazard_kill_positions.append(pygame.Vector2(hazard.rect.center))
+                kind = str((hazard.spawn_profile or {}).get("enemy_kind", "balloon"))
+                hazard_kill_kinds.append(kind)
+                self._pending_balloon_pop_sfx_count += 1
+        for hazard in hazards_to_remove:
+            if hazard in self.hazards:
+                self.hazards.remove(hazard)
+        if hazard_kill_kinds:
+            self._spawn_xp_drops_for_kills(hazard_kill_positions, hazard_kill_kinds)
+            self.score_seconds += len(hazard_kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+            super_charge_gained += sum(
+                self.SUPER_CHARGE_REWARDS.get(kind, 6) for kind in hazard_kill_kinds
+            )
+            for center in hazard_kill_positions:
+                self.confetti.spawn_burst(center, count=6 + self._confetti_bonus_count())
+        if super_charge_gained > 0:
+            self.add_super_charge(super_charge_gained)
+
     def _apply_damage_to_multi_hit_enemy(self, hazard: object, *, projectile_damage: int) -> tuple[int, bool]:
         hits_registered = 0
         defeated = False
@@ -2100,12 +2561,379 @@ class GameSession:
             1.0 + move_speed_mult + self._character_move_speed_mult
         )
         projectile_cap_bonus = max(0, int(effects.get("projectile_cap_bonus", 0.0)))
-        self.max_active_projectiles = min(5, 3 + projectile_cap_bonus)
+        if self.active_weapon_id == "yoyo":
+            yoyo_cap_bonus = max(0, int(effects.get("yoyo_active_cap_bonus", 0.0)))
+            behavior_bonus = 1 if self._weapon_has_behavior("yoyo", "twin_yoyos") else 0
+            self.max_active_projectiles = min(
+                3,
+                max(
+                    1,
+                    int(self._active_weapon_definition.active_cap) + yoyo_cap_bonus + behavior_bonus,
+                ),
+            )
+        elif self.active_weapon_id == "bubble_wand":
+            bubble_cap_bonus = max(0, int(effects.get("bubble_active_cap_bonus", 0.0)))
+            behavior_bonus = 1 if self._weapon_has_behavior("bubble_wand", "bubble_storm") else 0
+            self.max_active_projectiles = min(
+                7,
+                max(1, int(self._active_weapon_definition.active_cap) + bubble_cap_bonus + behavior_bonus),
+            )
+        else:
+            self.max_active_projectiles = min(5, 3 + projectile_cap_bonus)
 
     def _spawn_speed_with_upgrade_modifiers(self, base_speed: float) -> float:
         effects = self.run_upgrades.effects_snapshot()
         enemy_speed_reduction = max(0.0, min(0.45, effects.get("enemy_speed_reduction", 0.0)))
         return base_speed * (1.0 - enemy_speed_reduction)
+
+    def _current_bubble_mode(self) -> str:
+        behavior_ids = self._weapon_behavior_ids("bubble_wand")
+        if "soap_cyclone" in behavior_ids:
+            return "orbit"
+        if "bubble_bounce" in behavior_ids:
+            return "bouncing"
+        if "giant_bubble" in behavior_ids:
+            return "rising"
+        return "wobble"
+
+    def _kazoo_target_direction(self) -> pygame.Vector2:
+        if not self.hazards:
+            return self._resolve_sparkler_attack_direction(pygame.Vector2(self.player.facing))
+        origin = pygame.Vector2(self.player_weapon_anchor())
+        nearest = min(self.hazards, key=lambda hazard: origin.distance_squared_to(pygame.Vector2(hazard.rect.center)))
+        direction = pygame.Vector2(nearest.rect.center) - origin
+        return self._resolve_sparkler_attack_direction(direction)
+
+    def _current_kazoo_beam_direction(self) -> pygame.Vector2:
+        direction = pygame.Vector2(self._kazoo_beam_direction)
+        if direction.length_squared() <= 0.0:
+            direction = pygame.Vector2(1.0, 0.0)
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        if "disco_sweep" in behavior_ids:
+            phase = self._kazoo_beam_elapsed * self.KAZOO_BEAM_SWEEP_SPEED
+            sweep_angle = math.sin(phase * math.tau) * self.KAZOO_BEAM_SWEEP_ANGLE
+            direction = direction.rotate(sweep_angle)
+        return direction.normalize()
+
+    def _current_kazoo_beam_range(self) -> float:
+        effects = self.run_upgrades.effects_snapshot()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        bonus = max(0.0, float(effects.get("kazoo_range_bonus", 0.0)))
+        if "party_laser" in behavior_ids:
+            bonus += 120.0
+        return max(80.0, float(self._active_weapon_definition.effective_range) + bonus)
+
+    def _current_kazoo_beam_width(self) -> float:
+        effects = self.run_upgrades.effects_snapshot()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        bonus = max(0.0, float(effects.get("kazoo_width_bonus", 0.0)))
+        if "rainbow_resonance" in behavior_ids:
+            bonus += 8.0
+        if "sonic_squeal" in behavior_ids:
+            bonus += 6.0
+        return max(8.0, self.KAZOO_BEAM_BASE_WIDTH + bonus)
+
+    def _current_kazoo_tick_interval(self) -> float:
+        effects = self.run_upgrades.effects_snapshot()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        reduction = max(0.0, float(effects.get("kazoo_tick_rate_bonus", 0.0)))
+        interval = self.KAZOO_BEAM_TICK_INTERVAL * max(0.35, 1.0 - reduction)
+        if "sonic_squeal" in behavior_ids:
+            interval *= 0.7
+        return max(0.03, interval)
+
+    def _current_kazoo_damage(self) -> int:
+        effects = self.run_upgrades.effects_snapshot()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        bonus = int(max(0.0, float(effects.get("kazoo_damage_bonus", 0.0))))
+        if "rainbow_resonance" in behavior_ids:
+            bonus += 1
+        if "party_laser" in behavior_ids:
+            bonus += 1
+        return max(1, int(self._active_weapon_definition.base_damage) + bonus)
+
+    def _update_kazoo_beam(self, delta_seconds: float) -> None:
+        if not self._kazoo_beam_active:
+            self._kazoo_beam_remaining = 0.0
+            self._kazoo_beam_elapsed = 0.0
+            self._kazoo_beam_tick_timer = 0.0
+            return
+        dt = max(0.0, float(delta_seconds))
+        self._kazoo_beam_elapsed += dt
+        self._kazoo_beam_remaining = max(0.0, self._kazoo_beam_remaining - dt)
+        self._kazoo_beam_tick_timer += dt
+        tick_interval = self._current_kazoo_tick_interval()
+        while self._kazoo_beam_tick_timer >= tick_interval:
+            self._kazoo_beam_tick_timer -= tick_interval
+            self._apply_kazoo_beam_tick()
+        if self._kazoo_beam_remaining <= 0.0:
+            self._kazoo_beam_active = False
+
+    def _apply_kazoo_beam_tick(self) -> None:
+        if not self._kazoo_beam_active:
+            return
+        origin = pygame.Vector2(self.player_weapon_anchor())
+        direction = self._current_kazoo_beam_direction()
+        end_point = origin + (direction * self._current_kazoo_beam_range())
+        width = self._current_kazoo_beam_width()
+        damage = self._current_kazoo_damage()
+        behavior_ids = self._weapon_behavior_ids("kazoo_beam")
+        hazards_to_remove: list[Hazard] = []
+        kill_positions: list[pygame.Vector2] = []
+        kill_kinds: list[str] = []
+        beam_hits: list[Hazard] = []
+        for hazard in self.hazards:
+            expanded = hazard.rect.inflate(int(width), int(width))
+            if not expanded.clipline((int(origin.x), int(origin.y)), (int(end_point.x), int(end_point.y))):
+                continue
+            beam_hits.append(hazard)
+        for hazard in beam_hits:
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=damage)
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                if defeated:
+                    hazards_to_remove.append(hazard)
+                    kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    kill_kinds.append("boss_balloon")
+                continue
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=damage)
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated:
+                    hazards_to_remove.append(hazard)
+                    kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                continue
+            hazards_to_remove.append(hazard)
+            kill_positions.append(pygame.Vector2(hazard.rect.center))
+            kill_kinds.append(str((hazard.spawn_profile or {}).get("enemy_kind", "balloon")))
+            self._pending_balloon_hit_sfx_count += 1
+            self._pending_balloon_pop_sfx_count += 1
+        if "feedback_loop" in behavior_ids:
+            for hazard in list(beam_hits):
+                chain_target = self._nearest_chain_target(source=hazard, exclude_ids={id(item) for item in beam_hits})
+                if chain_target is None:
+                    continue
+                if chain_target not in hazards_to_remove:
+                    hazards_to_remove.append(chain_target)
+                    kill_positions.append(pygame.Vector2(chain_target.rect.center))
+                    kill_kinds.append(str((chain_target.spawn_profile or {}).get("enemy_kind", "balloon")))
+                    self._pending_balloon_hit_sfx_count += 1
+                    self._pending_balloon_pop_sfx_count += 1
+        for hazard in hazards_to_remove:
+            if hazard in self.hazards:
+                self.hazards.remove(hazard)
+        if kill_kinds:
+            self._spawn_xp_drops_for_kills(kill_positions, kill_kinds)
+            self.score_seconds += len(kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+
+    def _nearest_chain_target(self, *, source: Hazard, exclude_ids: set[int]) -> Hazard | None:
+        source_center = pygame.Vector2(source.rect.center)
+        nearest: Hazard | None = None
+        nearest_distance = float("inf")
+        for hazard in self.hazards:
+            if id(hazard) == id(source) or id(hazard) in exclude_ids:
+                continue
+            distance = source_center.distance_to(pygame.Vector2(hazard.rect.center))
+            if distance > self.KAZOO_BEAM_CHAIN_RADIUS:
+                continue
+            if distance < nearest_distance:
+                nearest = hazard
+                nearest_distance = distance
+        return nearest
+
+    def _hazard_delta_seconds(self, hazard: Hazard, delta_seconds: float) -> float:
+        entry = self._hazard_slow_timers.get(id(hazard))
+        if entry is None:
+            return max(0.0, float(delta_seconds))
+        _, multiplier = entry
+        return max(0.0, float(delta_seconds)) * max(0.2, min(1.0, float(multiplier)))
+
+    def _decay_hazard_slow_effects(self, delta_seconds: float) -> None:
+        dt = max(0.0, float(delta_seconds))
+        known = {id(hazard) for hazard in self.hazards}
+        self._hazard_slow_timers = {
+            hazard_id: (remaining - dt, mult)
+            for hazard_id, (remaining, mult) in self._hazard_slow_timers.items()
+            if (remaining - dt) > 0.0 and hazard_id in known
+        }
+
+    def _apply_hazard_slow(self, hazard: Hazard, *, duration: float, speed_multiplier: float) -> None:
+        hazard_id = id(hazard)
+        existing = self._hazard_slow_timers.get(hazard_id)
+        if existing is None:
+            self._hazard_slow_timers[hazard_id] = (max(0.05, float(duration)), float(speed_multiplier))
+            return
+        prior_duration, prior_mult = existing
+        self._hazard_slow_timers[hazard_id] = (
+            max(prior_duration, float(duration)),
+            min(float(prior_mult), float(speed_multiplier)),
+        )
+
+    def _current_bubble_slow_multiplier(self) -> float:
+        effects = self.run_upgrades.effects_snapshot()
+        sticky_bonus = max(0.0, float(effects.get("bubble_sticky_bonus", 0.0)))
+        return max(0.4, self.BUBBLE_WAND_SLOW_MULTIPLIER - sticky_bonus)
+
+    def _update_foam_zones(self, delta_seconds: float) -> None:
+        if not self._foam_zones:
+            return
+        dt = max(0.0, float(delta_seconds))
+        active: list[dict[str, float | pygame.Vector2]] = []
+        for zone in self._foam_zones:
+            zone["remaining"] = float(zone.get("remaining", 0.0)) - dt
+            zone["tick_timer"] = float(zone.get("tick_timer", 0.0)) - dt
+            while float(zone.get("tick_timer", 0.0)) <= 0.0 and float(zone.get("remaining", 0.0)) > 0.0:
+                zone["tick_timer"] = float(zone.get("tick_timer", 0.0)) + self.BUBBLE_WAND_FOAM_TICK
+                self._apply_foam_zone_tick(zone)
+            if float(zone.get("remaining", 0.0)) > 0.0:
+                active.append(zone)
+        self._foam_zones = active
+
+    def _apply_foam_zone_tick(self, zone: dict[str, float | pygame.Vector2]) -> None:
+        center = pygame.Vector2(zone.get("center", pygame.Vector2()))
+        radius = float(zone.get("radius", self.BUBBLE_WAND_FOAM_RADIUS))
+        damage = max(0, int(zone.get("damage", 0)))
+        for hazard in self.hazards:
+            if center.distance_to(pygame.Vector2(hazard.rect.center)) > radius:
+                continue
+            self._apply_hazard_slow(
+                hazard,
+                duration=self.BUBBLE_WAND_SLOW_DURATION,
+                speed_multiplier=self._current_bubble_slow_multiplier(),
+            )
+            if damage <= 0:
+                continue
+            if isinstance(hazard, (BossBalloon, PinataEnemy)):
+                self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=damage)
+
+    def _spawn_foam_zone(self, center: pygame.Vector2, *, damage: int = 0) -> None:
+        self._foam_zones.append(
+            {
+                "center": pygame.Vector2(center),
+                "radius": self.BUBBLE_WAND_FOAM_RADIUS,
+                "remaining": self.BUBBLE_WAND_FOAM_DURATION,
+                "tick_timer": self.BUBBLE_WAND_FOAM_TICK,
+                "damage": float(max(0, int(damage))),
+            }
+        )
+
+    def _pop_bubble_projectile(self, projectile: BubbleProjectile, *, hit_hazard: Hazard | None) -> None:
+        center = pygame.Vector2(projectile.position)
+        self.confetti.spawn_burst(
+            center,
+            count=6,
+            speed_min=70.0,
+            speed_max=145.0,
+            lifetime_min=0.1,
+            lifetime_max=0.22,
+        )
+        self._pending_bottle_rocket_impact_sfx_count += 1
+        radius = float(projectile.pop_radius)
+        hazards_to_remove: list[Hazard] = []
+        kill_positions: list[pygame.Vector2] = []
+        kill_kinds: list[str] = []
+        behavior_ids = self._weapon_behavior_ids("bubble_wand")
+        foam_damage = 1 if "sticky_foam_field" in behavior_ids else 0
+        for hazard in self.hazards:
+            # Guarantee direct contact damage: if collision already identified a hit target,
+            # treat that hazard as in-range even when center-distance gating would miss.
+            if hazard is not hit_hazard and center.distance_to(pygame.Vector2(hazard.rect.center)) > radius:
+                continue
+            self._apply_hazard_slow(
+                hazard,
+                duration=self.BUBBLE_WAND_SLOW_DURATION,
+                speed_multiplier=self._current_bubble_slow_multiplier(),
+            )
+            if isinstance(hazard, BossBalloon):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=projectile.damage)
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                    self._pending_boss_hit_sfx_count += hit_count
+                if defeated:
+                    hazards_to_remove.append(hazard)
+                    kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    kill_kinds.append("boss_balloon")
+                continue
+            if isinstance(hazard, PinataEnemy):
+                hit_count, defeated = self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=projectile.damage)
+                if hit_count > 0:
+                    self._pending_balloon_hit_sfx_count += hit_count
+                if defeated:
+                    hazards_to_remove.append(hazard)
+                    kill_positions.append(pygame.Vector2(hazard.rect.center))
+                    kill_kinds.append("pinata")
+                    self._pending_balloon_pop_sfx_count += 1
+                continue
+            self._pending_balloon_hit_sfx_count += 1
+            hazards_to_remove.append(hazard)
+            kill_positions.append(pygame.Vector2(hazard.rect.center))
+            kill_kinds.append(str((hazard.spawn_profile or {}).get("enemy_kind", "balloon")))
+            self._pending_balloon_pop_sfx_count += 1
+        for hazard in hazards_to_remove:
+            if hazard in self.hazards:
+                self.hazards.remove(hazard)
+        if kill_kinds:
+            self._spawn_xp_drops_for_kills(kill_positions, kill_kinds)
+            self.score_seconds += len(kill_kinds) * self.KILL_BONUS_POINTS * self._score_multiplier_from_effects(
+                self.run_upgrades.effects_snapshot()
+            )
+        if "sticky_foam_field" in behavior_ids and (hit_hazard is not None or "soap_cyclone" in behavior_ids):
+            self._spawn_foam_zone(center, damage=foam_damage)
+        projectile.pending_pop = True
+
+    def _orbiting_bubble_positions(self) -> tuple[pygame.Vector2, ...]:
+        center = pygame.Vector2(self.player.rect.center)
+        count = max(1, int(self.BUBBLE_WAND_ORBIT_COUNT))
+        step = 360.0 / count
+        return tuple(
+            center
+            + pygame.Vector2(self.BUBBLE_WAND_ORBIT_RADIUS, 0.0).rotate(
+                self._orbiting_bubble_angle_degrees + (step * index)
+            )
+            for index in range(count)
+        )
+
+    def _update_orbiting_bubbles(self, delta_seconds: float) -> None:
+        if self.active_weapon_id != "bubble_wand":
+            self._orbiting_bubble_contact_cooldowns.clear()
+            return
+        if not self._weapon_has_behavior("bubble_wand", "soap_cyclone"):
+            self._orbiting_bubble_contact_cooldowns.clear()
+            return
+        self._orbiting_bubble_angle_degrees = (
+            self._orbiting_bubble_angle_degrees
+            + (self.BUBBLE_WAND_ORBIT_SPEED_DEGREES * max(0.0, float(delta_seconds)))
+        ) % 360.0
+        self._orbiting_bubble_contact_cooldowns = {
+            hazard_id: max(0.0, cooldown - max(0.0, float(delta_seconds)))
+            for hazard_id, cooldown in self._orbiting_bubble_contact_cooldowns.items()
+            if cooldown > max(0.0, float(delta_seconds))
+        }
+        positions = self._orbiting_bubble_positions()
+        for hazard in self.hazards:
+            hazard_id = id(hazard)
+            if self._orbiting_bubble_contact_cooldowns.get(hazard_id, 0.0) > 0.0:
+                continue
+            if not any(
+                self._orbiting_spark_intersects_rect(position, hazard.rect, self.BUBBLE_WAND_ORBIT_CONTACT_RADIUS)
+                for position in positions
+            ):
+                continue
+            self._orbiting_bubble_contact_cooldowns[hazard_id] = 0.25
+            self._apply_hazard_slow(
+                hazard,
+                duration=self.BUBBLE_WAND_SLOW_DURATION,
+                speed_multiplier=self._current_bubble_slow_multiplier(),
+            )
+            if isinstance(hazard, (BossBalloon, PinataEnemy)):
+                self._apply_damage_to_multi_hit_enemy(hazard, projectile_damage=self.BUBBLE_WAND_ORBIT_DAMAGE)
 
     def _spawn_xp_drops_for_kills(
         self,
@@ -2381,6 +3209,9 @@ class GameSession:
             "bottle_rocket_impact_count": self._pending_bottle_rocket_impact_sfx_count,
             "sparkler_swing_count": self._pending_sparkler_swing_sfx_count,
             "sparkler_hit_count": self._pending_sparkler_hit_sfx_count,
+            "yoyo_launch_count": self._pending_yoyo_launch_sfx_count,
+            "yoyo_hit_count": self._pending_yoyo_hit_sfx_count,
+            "yoyo_catch_count": self._pending_yoyo_catch_sfx_count,
             "xp_pickup_count": self._pending_xp_pickup_sfx_count,
             "evolution_count": self._pending_evolution_sfx_count,
         }
@@ -2402,6 +3233,9 @@ class GameSession:
         self._pending_bottle_rocket_impact_sfx_count = 0
         self._pending_sparkler_swing_sfx_count = 0
         self._pending_sparkler_hit_sfx_count = 0
+        self._pending_yoyo_launch_sfx_count = 0
+        self._pending_yoyo_hit_sfx_count = 0
+        self._pending_yoyo_catch_sfx_count = 0
         self._pending_xp_pickup_sfx_count = 0
         self._pending_evolution_sfx_count = 0
         return cues
@@ -2451,6 +3285,7 @@ class GameSession:
     def draw_playing(self, surface: pygame.Surface) -> None:
         for hazard in self.hazards:
             hazard.draw(surface)
+        self._draw_yoyo_tether(surface)
         for projectile in self.projectiles:
             projectile.draw(surface)
         for spray in self.enemy_sprays:
@@ -2479,10 +3314,29 @@ class GameSession:
         if self._show_weapon_overlay_debug:
             self._draw_weapon_overlay_debug(surface)
         self._draw_orbiting_sparks_visual(surface)
+        self._draw_orbiting_yoyos_visual(surface)
+        self._draw_orbiting_bubbles_visual(surface)
+        self._draw_foam_zones_visual(surface)
         self._draw_spark_aura_visual(surface)
+        self._draw_kazoo_beam_visual(surface)
         self._draw_sparkler_attack_visual(surface)
         self._draw_evolution_feedback_overlay(surface)
         self.confetti.draw(surface)
+
+    def _draw_yoyo_tether(self, surface: pygame.Surface) -> None:
+        anchor = self.player_weapon_anchor()
+        for projectile in self.projectiles:
+            if not isinstance(projectile, YoyoProjectile):
+                continue
+            if projectile.state == "complete":
+                continue
+            pygame.draw.line(
+                surface,
+                self.YOYO_TETHER_COLOR,
+                anchor,
+                (int(projectile.position.x), int(projectile.position.y)),
+                width=self.YOYO_TETHER_WIDTH,
+            )
 
     def player_render_anchor(self) -> tuple[int, int]:
         return (self.player.rect.centerx, self.player.rect.bottom)
@@ -2514,6 +3368,13 @@ class GameSession:
 
     def _resolve_overlay_for_weapon(self, weapon_id: str) -> WeaponVisualOverlay | None:
         behavior_ids = self._weapon_behavior_ids(weapon_id)
+        if weapon_id == "yoyo":
+            yoyo_active = any(
+                isinstance(projectile, YoyoProjectile) and projectile.state != "complete"
+                for projectile in self.projectiles
+            )
+            if yoyo_active:
+                return None
         variant_id = self.weapon_visual_variant_id_for_weapon(weapon_id)
         if variant_id == "none":
             return None
@@ -2795,7 +3656,7 @@ class GameSession:
     def _draw_spark_aura_visual(self, surface: pygame.Surface) -> None:
         if self.active_weapon_id != "sparkler":
             return
-        if self._active_weapon_form_id("sparkler") != "spark_aura":
+        if not self._weapon_has_behavior("sparkler", "spark_aura"):
             return
         center = pygame.Vector2(self.player.rect.center)
         progress = self._spark_aura_tick_timer / max(0.001, self.SPARK_AURA_TICK_INTERVAL)
@@ -2828,10 +3689,67 @@ class GameSession:
             )
         surface.blit(aura_surface, (int(center.x) - radius - 2, int(center.y) - radius - 2))
 
+    def _draw_foam_zones_visual(self, surface: pygame.Surface) -> None:
+        if not self._foam_zones:
+            return
+        for zone in self._foam_zones:
+            center = pygame.Vector2(zone.get("center", pygame.Vector2()))
+            radius = int(float(zone.get("radius", self.BUBBLE_WAND_FOAM_RADIUS)))
+            remaining = max(0.0, float(zone.get("remaining", 0.0)))
+            alpha = max(18, min(92, int(28 + (remaining * 20.0))))
+            foam_surface = pygame.Surface((radius * 2 + 6, radius * 2 + 6), pygame.SRCALPHA)
+            local_center = (radius + 3, radius + 3)
+            pygame.draw.circle(foam_surface, (198, 246, 255, alpha), local_center, radius)
+            pygame.draw.circle(foam_surface, (228, 250, 255, min(130, alpha + 30)), local_center, radius, width=2)
+            surface.blit(foam_surface, (int(center.x - radius - 3), int(center.y - radius - 3)))
+
+    def _draw_orbiting_bubbles_visual(self, surface: pygame.Surface) -> None:
+        if self.active_weapon_id != "bubble_wand":
+            return
+        if not self._weapon_has_behavior("bubble_wand", "soap_cyclone"):
+            return
+        for bubble_pos in self._orbiting_bubble_positions():
+            pygame.draw.circle(surface, (176, 236, 255), (int(bubble_pos.x), int(bubble_pos.y)), 7, width=2)
+            pygame.draw.circle(surface, (230, 250, 255), (int(bubble_pos.x), int(bubble_pos.y)), 3)
+
+    def _draw_kazoo_beam_visual(self, surface: pygame.Surface) -> None:
+        if self.active_weapon_id != "kazoo_beam" or not self._kazoo_beam_active:
+            return
+        origin = pygame.Vector2(self.player_weapon_anchor())
+        direction = self._current_kazoo_beam_direction()
+        end = origin + (direction * self._current_kazoo_beam_range())
+        width = int(self._current_kazoo_beam_width())
+        progress = 1.0 - (self._kazoo_beam_remaining / max(0.001, self.KAZOO_BEAM_BASE_DURATION))
+        pulse = 0.75 + (0.25 * abs(math.sin((self._kazoo_beam_elapsed + progress) * math.tau * 4.0)))
+        if self._weapon_has_behavior("kazoo_beam", "rainbow_resonance"):
+            core = (255, 216, 96)
+            glow = (255, 126, 216)
+        else:
+            core = (255, 238, 170)
+            glow = (120, 238, 255)
+        beam_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.line(
+            beam_surface,
+            (glow[0], glow[1], glow[2], int(90 * pulse)),
+            (int(origin.x), int(origin.y)),
+            (int(end.x), int(end.y)),
+            max(2, width + 8),
+        )
+        pygame.draw.line(
+            beam_surface,
+            (core[0], core[1], core[2], int(220 * pulse)),
+            (int(origin.x), int(origin.y)),
+            (int(end.x), int(end.y)),
+            max(1, width),
+        )
+        pygame.draw.circle(beam_surface, (255, 248, 224, 210), (int(origin.x), int(origin.y)), max(4, width // 2))
+        pygame.draw.circle(beam_surface, (255, 248, 224, 180), (int(end.x), int(end.y)), max(3, width // 3))
+        surface.blit(beam_surface, (0, 0))
+
     def _draw_orbiting_sparks_visual(self, surface: pygame.Surface) -> None:
         if self.active_weapon_id != "sparkler":
             return
-        if self._active_weapon_form_id("sparkler") != "orbiting_sparklers":
+        if not self._weapon_has_behavior("sparkler", "orbiting_sparklers"):
             return
         orbit_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         orbit_center = pygame.Vector2(self.player.rect.center)
@@ -2912,6 +3830,26 @@ class GameSession:
                 (int(spark_position.x), int(spark_position.y) + 3),
                 width=1,
             )
+        surface.blit(orbit_surface, (0, 0))
+
+    def _draw_orbiting_yoyos_visual(self, surface: pygame.Surface) -> None:
+        if self.active_weapon_id != "yoyo":
+            return
+        if not self._weapon_has_behavior("yoyo", "orbit_yoyo_storm"):
+            return
+        orbit_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        anchor = self.player_weapon_anchor()
+        for position in self._orbiting_yoyo_positions():
+            tip = (int(position.x), int(position.y))
+            pygame.draw.line(
+                orbit_surface,
+                (255, 210, 236, 130),
+                anchor,
+                tip,
+                width=1,
+            )
+            pygame.draw.circle(orbit_surface, (252, 136, 192, 220), tip, 9)
+            pygame.draw.circle(orbit_surface, (255, 238, 248, 220), tip, 5, width=2)
         surface.blit(orbit_surface, (0, 0))
 
     def _draw_evolution_feedback_overlay(self, surface: pygame.Surface) -> None:
