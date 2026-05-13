@@ -92,6 +92,35 @@ class GameplayAudioCueValidationTests(unittest.TestCase):
         self.assertEqual(cues["sparkler_swing_count"], 1)
         self.assertGreaterEqual(cues["sparkler_hit_count"], 1)
 
+    def test_yoyo_launch_hit_and_catch_emit_audio_cues(self) -> None:
+        session = GameSession(self.bounds, hazard_count=0)
+        session.set_active_weapon("yoyo")
+        session.player.position.update(300.0, 300.0)
+        hazard = BalloonEnemy(speed=0.0)
+        hazard.position.update(360.0, 300.0)
+        session.hazards = [hazard]
+
+        session.fire_projectile(pygame.Vector2(1.0, 0.0))
+        first_cues = session.consume_audio_cues()
+        self.assertEqual(first_cues["yoyo_launch_count"], 1)
+        hit_seen = False
+        for _ in range(40):
+            session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
+            cues = session.consume_audio_cues()
+            if int(cues["yoyo_hit_count"]) > 0:
+                hit_seen = True
+                break
+        self.assertTrue(hit_seen)
+
+        catch_seen = False
+        for _ in range(80):
+            session.update_playing(0.016, pygame.Vector2(0.0, 0.0), attack=False)
+            cues = session.consume_audio_cues()
+            if int(cues["yoyo_catch_count"]) > 0:
+                catch_seen = True
+                break
+        self.assertTrue(catch_seen)
+
     def test_boss_spawn_sets_audio_cue(self) -> None:
         session = GameSession(self.bounds, hazard_count=0)
         for _ in range(9):

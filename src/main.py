@@ -54,10 +54,12 @@ START_MENU_OPTIONS = ("Start Game", "Level Select", "Toggle Sound", "Toggle Aim 
 PAUSE_MENU_OPTIONS = ("Resume", "Restart", "Toggle Sound", "Toggle Aim Assist", "Quit to Menu")
 PLAYER_SELECT_NOTES = {
     "teddy_f": "",
-    "bunny_f": "Soft hopper",
+    "bunny_f": "",
     "fox_f": "Clever plush",
     "cat_f": "Cozy cat",
 }
+PLAYER_SELECT_CHARACTER_IDS = ("teddy_f", "bunny_f")
+PLAYER_SELECT_WEAPON_IDS = ("bottle_rocket", "sparkler", "yoyo", "bubble_wand", "kazoo_beam")
 
 
 class GameState(str, Enum):
@@ -361,9 +363,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     demo_mode_enabled = demo_mode_enabled_from_runtime(argv=resolved_argv)
     world_bounds = screen.get_rect()
     session = GameSession(world_bounds, hazard_count=HAZARD_COUNT)
-    all_player_select_ids: tuple[str, ...] = (
-        PLAYABLE_PARTY_ANIMAL_IDS if PLAYABLE_PARTY_ANIMAL_IDS else ("teddy_f",)
-    )
+    all_player_select_ids: tuple[str, ...] = tuple(
+        variant_id for variant_id in PLAYABLE_PARTY_ANIMAL_IDS if variant_id in PLAYER_SELECT_CHARACTER_IDS
+    ) or ("teddy_f",)
     player_select_ids: tuple[str, ...] = tuple(
         variant_id
         for variant_id in all_player_select_ids
@@ -486,7 +488,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     audio.play_sfx("ui_back")
                     state = transition_state(state, GameState.MENU)
                 elif state == GameState.PLAYER_SELECT and input_controller.is_weapon_toggle(event):
-                    selected_weapon_id = "sparkler" if selected_weapon_id == "bottle_rocket" else "bottle_rocket"
+                    current_index = PLAYER_SELECT_WEAPON_IDS.index(selected_weapon_id) if selected_weapon_id in PLAYER_SELECT_WEAPON_IDS else 0
+                    selected_weapon_id = PLAYER_SELECT_WEAPON_IDS[(current_index + 1) % len(PLAYER_SELECT_WEAPON_IDS)]
                     audio.play_sfx("ui_toggle_settings")
                 elif state == GameState.PAUSED and input_controller.is_pause_menu_up(event):
                     pause_menu_index = next_pause_menu_index(pause_menu_index, -1)
@@ -669,6 +672,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 audio.play_sfx("weapon_fire")
             for _ in range(min(4, int(audio_cues["sparkler_hit_count"]))):
                 audio.play_sfx("balloon_hit")
+            for _ in range(min(4, int(audio_cues["yoyo_launch_count"]))):
+                audio.play_sfx("weapon_fire")
+            for _ in range(min(4, int(audio_cues["yoyo_hit_count"]))):
+                audio.play_sfx("balloon_hit")
+            for _ in range(min(4, int(audio_cues["yoyo_catch_count"]))):
+                audio.play_sfx("ui_nav")
             for _ in range(min(6, int(audio_cues["xp_pickup_count"]))):
                 audio.play_sfx("ui_nav")
             for _ in range(min(2, int(audio_cues["evolution_count"]))):
@@ -791,7 +800,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 selected_note=selected_note,
                 passive_bonus=passive.passive_bonus,
                 passive_drawback=passive.passive_drawback,
-                passive_summary=("Tougher, Slower" if selected_variant_id == "teddy_f" else None),
+                passive_summary=(
+                    "Tougher, Slower"
+                    if selected_variant_id == "teddy_f"
+                    else "Faster, Squishier"
+                    if selected_variant_id == "bunny_f"
+                    else None
+                ),
                 selected_weapon_name=get_weapon_definition(selected_weapon_id).display_name,
                 selected_locked=selected_is_locked,
                 selected_unlock_hint=unlock_hint,

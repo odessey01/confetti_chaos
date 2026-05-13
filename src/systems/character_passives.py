@@ -34,8 +34,8 @@ CHARACTER_PASSIVE_PROFILES: dict[str, CharacterPassiveProfile] = {
     "bunny_f": CharacterPassiveProfile(
         character_id="bunny_f",
         display_name="Bunny",
-        passive_bonus="+16% movement speed",
-        passive_drawback="-1 max health",
+        passive_bonus="Faster",
+        passive_drawback="Squishier",
         max_health_bonus=-1,
         move_speed_mult=0.16,
     ),

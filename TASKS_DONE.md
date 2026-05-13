@@ -9759,3 +9759,1049 @@ Add Steam leaderboard support for run scores while preserving offline/local fall
 - Game shows local scores when Steam is unavailable.
 - Steam leaderboard uses `global_high_score`.
 - Score is submitted once per completed run.
+
+
+---
+Appended from TASKS.md on 2026-05-12 16:49:13
+---
+
+# TASKS.md
+
+## Project Phase: Yo-Yo Weapon System
+
+Objective: Add the Yo-Yo as a new party-themed weapon that fills the boomerang / tether / orbital archetype, with a scalable architecture for upgrades, evolutions, and future visual variants.
+
+Weapon fantasy:
+A cute toy yo-yo launches from the player, swings outward on a tether, damages enemies, and returns. Later evolutions transform it into orbiting chaos, twin yo-yos, or chained attacks.
+
+---
+
+## Task 1: Add Yo-Yo Weapon Definition
+Status: DONE
+
+### Objective
+
+Introduce Yo-Yo as a first-class weapon in the core weapon system.
+
+### Requirements
+
+* Add new weapon id:
+
+  * `yoyo`
+* Add display name:
+
+  * `Yo-Yo`
+* Register weapon in weapon config / definitions
+* Add baseline stats:
+
+  * damage
+  * cooldown
+  * max distance
+  * travel speed
+  * return speed
+  * active projectile cap
+  * per-enemy hit cooldown
+* Ensure weapon participates in progression / upgrade systems
+
+### Suggested Baseline
+
+* medium damage
+* medium cooldown
+* medium range
+* medium-fast outbound speed
+* fast return speed
+* active cap = 1
+
+### Acceptance Criteria
+
+* Yo-Yo exists as a selectable weapon
+* Game loads without config errors
+
+---
+
+## Task 2: Build Yo-Yo Projectile State Machine
+Status: DONE
+
+### Objective
+
+Implement outbound + return movement behavior.
+
+### Requirements
+
+Create explicit movement states:
+
+* launching
+* outward
+* pause (optional)
+* returning
+* complete
+
+Implement:
+
+* outward travel to max distance
+* optional brief hover/pause
+* return travel toward player
+* despawn after successful return
+* stable behavior while player moves
+
+### Acceptance Criteria
+
+* Yo-Yo launches outward correctly
+* Yo-Yo reliably returns
+* Movement feels smooth while player moves
+
+---
+
+## Task 3: Add Tether Rendering
+Status: DONE
+
+### Objective
+
+Visually sell the yo-yo fantasy.
+
+### Requirements
+
+* Render tether line between player and active yo-yo
+* Anchor tether to player weapon mount
+* Continuously update tether while moving
+* Tune tether thickness / softness
+* Remove tether on despawn
+* Add optional debug tether rendering
+
+### Acceptance Criteria
+
+* Yo-Yo always appears tethered to player
+* Tether behaves cleanly during motion
+
+---
+
+## Task 4: Create Yo-Yo Art Assets
+Status: PARTIAL (temporary sprite registered; bespoke Tier 1 art still needed)
+
+### Objective
+
+Add the first visual implementation.
+
+### Requirements
+
+Create:
+
+* Tier 1 Yo-Yo sprite
+* transparent background
+* consistent cute pastel visual style
+* readable at gameplay sprite size
+
+Style direction:
+
+* toy aesthetic
+* rounded shapes
+* pastel colors
+* clean silhouette
+* cheerful / plush-compatible
+
+Register assets in loader / manifest.
+
+### Acceptance Criteria
+
+* Yo-Yo sprite renders correctly
+* Matches current game art direction
+
+---
+
+## Task 5: Add Damage Logic
+Status: DONE
+
+### Objective
+
+Make yo-yo combat interactions feel satisfying and balanced.
+
+### Requirements
+
+Implement:
+
+* collision detection
+* damage application on contact
+* outbound hit support
+* return hit support
+* per-enemy hit cooldown
+* overlap protection against rapid repeat hits
+* clean dead-enemy handling
+
+### Acceptance Criteria
+
+* Yo-Yo damages enemies predictably
+* No broken rapid multi-hit spam
+
+---
+
+## Task 6: Integrate Player Weapon Anchor
+Status: DONE
+
+### Objective
+
+Launch from believable player position.
+
+### Requirements
+
+* Reuse generic weapon anchor system
+* Launch from player weapon mount
+* Support left/right facing
+* Return to live player anchor position
+* Prevent snapping / desync
+
+### Acceptance Criteria
+
+* Yo-Yo launches from believable position
+* Return path tracks moving player correctly
+
+---
+
+## Task 7: Add Equipped Weapon Overlay Visual
+Status: DONE
+
+### Objective
+
+Show the equipped Yo-Yo visually when idle.
+
+### Requirements
+
+* Add idle overlay sprite when Yo-Yo is equipped
+* Integrate with generic overlay framework
+* Add config entry:
+
+  * sprite
+  * scale
+  * offsets
+  * rotation
+  * z-layer
+* Hide overlay while active yo-yo is deployed (optional)
+* Restore overlay after return
+
+### Acceptance Criteria
+
+* Equipped Yo-Yo visibly appears on player
+* Overlay system remains reusable
+
+---
+
+## Task 8: Add Yo-Yo Upgrade Definitions
+Status: DONE
+
+### Objective
+
+Create progression path.
+
+### Requirements
+
+Add upgrades:
+
+#### yoyo_range_up
+
+* increases max distance
+* tag:
+
+  * `yoyo_range`
+
+#### yoyo_speed_up
+
+* increases travel speed
+* tag:
+
+  * `yoyo_speed`
+
+#### yoyo_damage_up
+
+* increases impact damage
+* tag:
+
+  * `yoyo_power`
+
+#### yoyo_count_up
+
+* increases active yo-yo count
+* tag:
+
+  * `yoyo_multi`
+
+#### yoyo_spin_up
+
+* prepares orbital path
+* tag:
+
+  * `yoyo_orbit`
+
+Tune:
+
+* weights
+* stack limits
+* progression balance
+
+### Acceptance Criteria
+
+* Yo-Yo upgrades appear during runs
+* Stats scale correctly
+
+---
+
+## Task 9: Add Yo-Yo Evolution Definitions
+Status: DONE
+
+### Objective
+
+Integrate with evolution framework.
+
+### Requirements
+
+Add:
+
+### Hyper Yo-Yo
+
+Tags:
+
+* `yoyo_speed`
+* `yoyo_power`
+
+Behavior:
+
+* faster heavier impact
+
+---
+
+### Twin Yo-Yos
+
+Tags:
+
+* `yoyo_multi`
+* `yoyo_speed`
+
+Behavior:
+
+* multiple simultaneous yo-yos
+
+---
+
+### Orbit Yo-Yo Storm
+
+Tags:
+
+* `yoyo_orbit`
+* `yoyo_speed`
+
+Behavior:
+
+* orbit around player
+
+---
+
+### Chain Yo-Yo
+
+Tags:
+
+* `yoyo_range`
+* `yoyo_power`
+
+Behavior:
+
+* retarget nearby enemies
+
+### Acceptance Criteria
+
+* Evolutions register successfully
+* Eligibility checks recognize them
+
+---
+
+## Task 10: Add Orbital Movement Mode
+Status: DONE
+
+### Objective
+
+Support future orbiting evolution.
+
+### Requirements
+
+Implement:
+
+* orbit movement state
+* configurable orbit radius
+* configurable orbit speed
+* tether rendering during orbit
+* stable player-relative orbit behavior
+
+### Acceptance Criteria
+
+* Orbit mode works correctly
+* Player movement does not break orbit
+
+---
+
+## Task 11: Add Feel / VFX Polish
+Status: DONE
+
+### Objective
+
+Improve tactile gameplay feel.
+
+### Requirements
+
+Add:
+
+* impact spark VFX
+* soft bounce animation
+* optional motion trail
+* return catch feedback
+* sound effect hooks
+* small hit response polish
+
+### Acceptance Criteria
+
+* Yo-Yo feels fun and responsive
+
+---
+
+## Task 12: Gameplay Balance Pass
+Status: DONE
+
+### Objective
+
+Find a distinct gameplay niche.
+
+### Requirements
+
+Playtest against:
+
+* Bottle Rocket
+* Sparkler
+
+Tune:
+
+* damage
+* cooldown
+* range
+* outbound speed
+* return speed
+* active count
+* hit cooldown
+
+Validate:
+
+* not just "better sparkler"
+* unique positional identity
+* satisfying risk/reward
+
+### Acceptance Criteria
+
+* Yo-Yo feels distinct
+* Weapon is viable but balanced
+
+---
+
+# Suggested Implementation Order
+
+1. Weapon definition
+2. Projectile state machine
+3. Tether rendering
+4. Damage logic
+5. Player anchor integration
+6. Art + overlay
+7. Upgrades
+8. Evolutions
+9. Orbit mode
+10. VFX polish
+11. Balance pass
+
+---
+
+# Definition of Done
+
+* Yo-Yo is playable
+* Outbound + return loop works
+* Tether renders cleanly
+* Damage feels good
+* Overlay visuals work
+* Upgrade path exists
+* Evolutions are integrated
+* Orbit mode works
+* Weapon feels distinct and fun
+
+```
+```
+
+
+
+---
+Appended from TASKS.md on 2026-05-12 19:34:20
+---
+
+# TASKS.md
+
+## Project Phase: Bubble Wand Weapon System
+
+Objective: Add Bubble Wand as a new party-themed weapon that fills the zoning / drifting projectile / crowd control archetype, with scalable support for upgrades, evolutions, and visual variants.
+
+Weapon fantasy:
+A cute toy bubble wand blows floating bubbles that drift through the battlefield, popping on contact or after a short lifespan. Later evolutions turn it into bubble storms, sticky foam fields, or giant bouncing bubble chaos.
+
+---
+
+## Design Intent
+
+### Gameplay Role
+
+Bubble Wand should fill:
+
+* area denial
+* soft crowd control
+* damage over time
+* battlefield shaping
+* autonomous drifting projectiles
+
+Compared to existing weapons:
+
+* Bottle Rocket = burst projectile chaos
+* Sparkler = melee area control
+* Yo-Yo = tethered roaming damage
+* Bubble Wand = zoning / DOT / battlefield control
+
+Core fantasy:
+"harmless looking, surprisingly dangerous"
+
+---
+
+## Task 1: Add Bubble Wand Weapon Definition [DONE]
+
+### Objective
+
+Introduce Bubble Wand as a first-class weapon.
+
+### Requirements
+
+Add:
+
+* weapon id:
+
+  * `bubble_wand`
+
+* display name:
+
+  * `Bubble Wand`
+
+Register in weapon config / definitions.
+
+Define baseline stats:
+
+* bubble damage
+* cooldown
+* bubble lifespan
+* drift speed
+* bubble size
+* max active bubbles
+* pop radius
+* slow amount (if baseline control included)
+
+Suggested baseline:
+
+* low direct damage
+* medium cooldown
+* slow drifting projectiles
+* medium lifespan
+* active cap = 3–5
+* small pop radius
+
+### Acceptance Criteria
+
+* Bubble Wand exists as selectable weapon
+* Config loads cleanly
+* Status: Completed on 2026-05-12
+
+---
+
+## Task 2: Create Bubble Projectile Entity [DONE]
+
+### Objective
+
+Implement drifting bubble behavior.
+
+### Requirements
+
+Add bubble projectile entity supporting:
+
+* spawn from player
+* directional launch
+* slow drift movement
+* optional random wobble
+* lifespan expiration
+* pop state
+* despawn cleanup
+
+Movement feel:
+
+* soft
+* floaty
+* playful
+* readable
+
+Bubble behavior options:
+
+* move forward then drift
+* gently wander
+* optionally rise slightly
+
+### Acceptance Criteria
+
+* Bubbles spawn correctly
+* Movement feels floaty and intentional
+
+---
+
+## Task 3: Implement Bubble Pop Logic [DONE]
+
+### Objective
+
+Create satisfying impact behavior.
+
+### Requirements
+
+Bubble should pop when:
+
+* hitting enemy
+* reaching lifespan end
+* hitting max collision count (optional)
+
+On pop:
+
+* apply damage
+* trigger pop VFX
+* optionally apply AoE damage
+* optionally apply slow
+
+Support:
+
+* single-target pop
+* AoE pop radius
+* clean despawn
+
+### Acceptance Criteria
+
+* Bubble pop behavior works consistently
+* Pop feels satisfying and readable
+
+---
+
+## Task 4: Add Crowd Control Effects [DONE]
+
+### Objective
+
+Establish Bubble Wand as a battlefield control weapon.
+
+### Requirements
+
+Implement optional baseline crowd control:
+
+* slow enemies on contact
+  OR
+* slow enemies in pop radius
+
+Add config values for:
+
+* slow %
+* slow duration
+* stacking rules
+
+Prevent:
+
+* excessive per-frame reapplication spam
+* broken permanent slows
+
+### Acceptance Criteria
+
+* Bubble Wand has clear control identity
+* Slows feel useful but balanced
+
+---
+
+## Task 5: Create Bubble Wand Art Assets [DONE]
+
+### Objective
+
+Add first visual implementation.
+
+### Requirements
+
+Create:
+
+Bubble Wand:
+
+* cute toy bubble wand sprite
+* transparent background
+* pastel toy aesthetic
+
+Bubble projectiles:
+
+* small bubble sprite
+* medium bubble sprite
+* optional giant bubble sprite
+* subtle glow / soap sheen
+
+Visual direction:
+
+* cute
+* soft pastel
+* toy-like
+* whimsical
+* readable at gameplay scale
+
+Register in asset loader.
+
+### Acceptance Criteria
+
+* Weapon and bubbles render correctly
+* Matches overall game style
+
+---
+
+## Task 6: Add Equipped Overlay Visual [DONE]
+
+### Objective
+
+Show Bubble Wand when equipped.
+
+### Requirements
+
+Integrate with weapon overlay framework.
+
+Add visual config:
+
+* sprite
+* anchor
+* offsets
+* scale
+* idle angle
+* z layer
+
+Optional:
+
+* small idle bubble particle effect
+
+### Acceptance Criteria
+
+* Bubble Wand visibly appears on player
+* Uses generic overlay architecture
+
+---
+
+## Task 7: Add Bubble Movement Variants [DONE]
+
+### Objective
+
+Prepare movement diversity for upgrades and evolutions.
+
+### Requirements
+
+Support configurable movement behaviors:
+
+Modes:
+
+* straight drift
+* wobble drift
+* rising drift
+* bouncing bubble
+* orbiting bubble
+
+Movement logic should be data-driven where possible.
+
+### Acceptance Criteria
+
+* Bubble movement can vary by config / evolution
+* Core architecture supports future behaviors
+
+---
+
+## Task 8: Add Bubble Upgrade Definitions [DONE]
+
+### Objective
+
+Create progression path.
+
+### Requirements
+
+Add upgrades:
+
+### bubble_size_up
+
+Effect:
+
+* larger bubbles
+  Tag:
+* `bubble_size`
+
+---
+
+### bubble_duration_up
+
+Effect:
+
+* longer lifespan
+  Tag:
+* `bubble_duration`
+
+---
+
+### bubble_speed_up
+
+Effect:
+
+* faster drift
+  Tag:
+* `bubble_speed`
+
+---
+
+### bubble_count_up
+
+Effect:
+
+* more active bubbles
+  Tag:
+* `bubble_multi`
+
+---
+
+### bubble_sticky_up
+
+Effect:
+
+* stronger slow / sticky foam
+  Tag:
+* `bubble_sticky`
+
+---
+
+### bubble_power_up
+
+Effect:
+
+* stronger pop damage
+  Tag:
+* `bubble_power`
+
+Tune:
+
+* weights
+* stacks
+* scaling
+
+### Acceptance Criteria
+
+* Bubble upgrades appear in runs
+* Stats scale correctly
+
+---
+
+## Task 9: Add Bubble Evolutions [DONE]
+
+### Objective
+
+Integrate with evolution system.
+
+### Requirements
+
+Add:
+
+## Bubble Storm
+
+Tags:
+
+* `bubble_multi`
+* `bubble_speed`
+
+Behavior:
+
+* rapid bubble barrage
+
+---
+
+## Sticky Foam Field
+
+Tags:
+
+* `bubble_sticky`
+* `bubble_duration`
+
+Behavior:
+
+* popped bubbles leave slowing foam zones
+
+---
+
+## Giant Bubble
+
+Tags:
+
+* `bubble_size`
+* `bubble_power`
+
+Behavior:
+
+* massive drifting bubble with large pop radius
+
+---
+
+## Bubble Bounce
+
+Tags:
+
+* `bubble_speed`
+* `bubble_size`
+
+Behavior:
+
+* bubbles ricochet before popping
+
+---
+
+## Soap Cyclone
+
+Tags:
+
+* `bubble_multi`
+* `bubble_sticky`
+
+Behavior:
+
+* swirling foam orbit around player
+
+### Acceptance Criteria
+
+* Evolutions register successfully
+* Eligibility logic recognizes them
+
+---
+
+## Task 10: Add Foam Zone System [DONE]
+
+### Objective
+
+Support lingering battlefield control.
+
+### Requirements
+
+Create temporary hazard zone entity:
+
+* spawn from popped bubbles
+* limited lifespan
+* visual foam puddle / soap patch
+* applies slow
+* optional DOT
+
+Config:
+
+* zone radius
+* duration
+* tick interval
+* damage
+* slow amount
+
+### Acceptance Criteria
+
+* Foam zones function correctly
+* Good visual readability
+
+---
+
+## Task 11: Add Bubble VFX / Feel Polish [DONE]
+
+### Objective
+
+Make the weapon feel delightful.
+
+### Requirements
+
+Add:
+
+* bubble spawn pop
+* bubble wobble animation
+* soap shimmer
+* pop burst particles
+* splash / foam visuals
+* sound hooks
+* gentle bounce / float feedback
+
+Optional:
+
+* rainbow sheen effect
+
+### Acceptance Criteria
+
+* Bubble Wand feels whimsical and satisfying
+
+---
+
+## Task 12: Gameplay Balance Pass [DONE]
+
+### Objective
+
+Find a unique gameplay niche.
+
+### Requirements
+
+Playtest against:
+
+* Bottle Rocket
+* Sparkler
+* Yo-Yo
+
+Tune:
+
+* damage
+* cooldown
+* bubble count
+* lifespan
+* speed
+* slow amount
+* pop radius
+* foam duration
+
+Validate:
+
+* not just weaker Bottle Rocket
+* meaningful control identity
+* useful battlefield shaping
+
+### Acceptance Criteria
+
+* Bubble Wand feels unique and viable
+
+---
+
+# Suggested Implementation Order
+
+1. Weapon definition
+2. Bubble projectile entity
+3. Pop logic
+4. Crowd control
+5. Art assets
+6. Equipped overlay
+7. Upgrade system
+8. Evolutions
+9. Foam zones
+10. VFX polish
+11. Balance pass
+
+---
+
+# Definition of Done
+
+* Bubble Wand is playable
+* Bubbles drift and pop correctly
+* Crowd control works
+* Overlay visuals work
+* Upgrade path exists
+* Evolutions are integrated
+* Foam zones function
+* Weapon feels distinct, fun, and thematic
+
+```
+```
+
+
